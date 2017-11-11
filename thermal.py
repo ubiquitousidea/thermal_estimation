@@ -6,6 +6,7 @@ from numpy import array_repr as represent
 from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
 from matplotlib.pyplot import scatter, Figure, Axes
+import matplotlib.pyplot as plt
 
 
 """
@@ -151,6 +152,8 @@ class Simulation(object):
             time_series[:, 1]
         )
 
+        plt.show()
+
     @property
     def t_init(self):
         return self._t_init
@@ -206,4 +209,4 @@ if __name__ == "__main__":
     print(
         represent(output, precision=3)
     )
-    s.plot_time_series()
+    s.plot_time_series(6000, 2)
