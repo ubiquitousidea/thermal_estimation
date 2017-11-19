@@ -36,14 +36,15 @@ def temperature(time, temp_far,
     return temp_far - (temp_far - temp_init) * exp(-rate_const * time)
 
 
-def add_noise(arr):
+def add_noise(arr, sigma):
     """
     Add noise to the elements of an array
     MODIFIES ARGUMENT IN PLACE
     :param arr: a numpy.ndarray
     :return: NoneType. Modifies argument in place
     """
-    arr += noise(*arr.shape)
+    dims = arr.shape
+    arr += sigma * noise(*dims)
 
 
 def column_bind(arr1, arr2):
@@ -66,6 +67,12 @@ def column_bind(arr1, arr2):
 class Simulation(object):
     def __init__(self, t_init, t_hot, rate_const, sigma=0.):
         """
+        Use this to produce a simulated time series of temperature data.
+
+        Example:
+        >>> s = Simulation(33, 475, .05, 3)
+        >>> ts = s.simulate(2, 65)
+
         :param [degrees F] t_init: Initial temperature
         :param [degrees F] t_hot: Far away temperature (asymptotic temperature)
         :param [complicated units] rate_const: ratio of cooling rate to distance
@@ -96,6 +103,7 @@ class Simulation(object):
         :param n_pt: number of time points (number of periods + 1)
         :return: numpy.ndarray (1-d)
         """
+        #TODO: Change signature to accept total time
         _times = linspace(
             start=0,
             stop=t_incr * (n_pt - 1),
@@ -107,11 +115,9 @@ class Simulation(object):
         """
         Simulate the heating by convection
 
-        s = Simulation(...)
-        r = s.simulate(6000, 10)  # 6000 seconds, 10 samples per second
-        # r is a 60001 by 2 matrix.
-        # Zeroth column is times.
-        # Oneth (second) column is Temperatures.
+        Return info:
+        Zeroth column is times.
+        Oneth (second) column is Temperatures.
 
         :param t_incr: time between measurements (seconds)
         :param n_pt: number of time points, including the zero-time.
@@ -137,7 +143,7 @@ class Simulation(object):
             rate_const=self.rate_const
         )
         set_random_seed(random_seed)
-        add_noise(temps)
+        add_noise(temps, self.sigma)
         return column_bind(times, temps)
 
     def plot_time_series(self, t_incr, n_pt, random_seed=123):
@@ -153,13 +159,11 @@ class Simulation(object):
             n_pt=n_pt,
             random_seed=random_seed
         )
-
         scatter(
             time_series[:, 0],
             time_series[:, 1],
             alpha=.8
         )
-
         plt.show()
 
     @property
@@ -211,14 +215,34 @@ class Simulation(object):
         return self._noise_variance
 
 
+class Estimator(object):
+    def __init__(self, time_dependent_model, observed_time_series):
+        self.tdm = time_dependent_model
+        self.ots = observed_time_series
+
+    def estimate(self):
+        """
+        Estimate the parameters of the time dependent model given
+            some observed time series. It is assumed that the first
+            argument to the model is time while the remaining args
+            are parameters
+        :return: Estimates of the parameters that would be input
+            to the time dependent model
+        """
+        iterates = []
+        for x in iterates:
+            pass
+
+
 if __name__ == "__main__":
     s = Simulation(
         t_init=60,
         t_hot=415,
         rate_const=.05,
-        sigma=3
+        sigma=10
     )
     s.plot_time_series(
         t_incr=2,
-        n_pt=65
+        n_pt=33,
+        random_seed=1729
     )
