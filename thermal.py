@@ -88,7 +88,22 @@ class Simulation(object):
         # items to make the class easier to use
         self._last_args = None
 
-    def simulate(self, t_max, freq, random_seed=123):
+    @staticmethod
+    def times(t_incr, n_pt):
+        """
+        Produce a list of times
+        :param t_incr: time between time points
+        :param n_pt: number of time points (number of periods + 1)
+        :return: numpy.ndarray (1-d)
+        """
+        _times = linspace(
+            start=0,
+            stop=t_incr * (n_pt - 1),
+            num=n_pt
+        )
+        return _times
+
+    def simulate(self, t_incr, n_pt, random_seed=123):
         """
         Simulate the heating by convection
 
@@ -98,8 +113,8 @@ class Simulation(object):
         # Zeroth column is times.
         # Oneth (second) column is Temperatures.
 
-        :param t_max: end time relative to start (seconds)
-        :param freq: the rate at which samples are taken (samples / second)
+        :param t_incr: time between measurements (seconds)
+        :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
         :return: numpy.ndarray. A matrix of temperatures and times
         """
@@ -114,42 +129,35 @@ class Simulation(object):
         #             }
         #     }
         # )
-
-        times = linspace(
-            start=0,
-            stop=t_max,
-            num=t_max * freq + 1
-        )
-
+        times = self.times(t_incr, n_pt)
         temps = temperature(
             time=times,
             temp_far=self.t_hot,
             temp_init=self.t_init,
             rate_const=self.rate_const
         )
-
         set_random_seed(random_seed)
         add_noise(temps)
-
         return column_bind(times, temps)
 
-    def plot_time_series(self, t_max, freq, random_seed=123):
+    def plot_time_series(self, t_incr, n_pt, random_seed=123):
         """
         Plot a time series of temperatures
-        :param t_max: end time relative to start (seconds)
-        :param freq: the rate at which samples are taken (samples / second)
+        :param t_incr: time between measurements (seconds)
+        :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
         :return: None
         """
         time_series = self.simulate(
-            t_max=t_max,
-            freq=freq,
+            t_incr=t_incr,
+            n_pt=n_pt,
             random_seed=random_seed
         )
 
         scatter(
             time_series[:, 0],
-            time_series[:, 1]
+            time_series[:, 1],
+            alpha=.8
         )
 
         plt.show()
@@ -204,9 +212,13 @@ class Simulation(object):
 
 
 if __name__ == "__main__":
-    s = Simulation(60, 415, .0005, 3)
-    output = s.simulate(6000, 2)  # 6000 seconds, 10 samples per second
-    print(
-        represent(output, precision=3)
+    s = Simulation(
+        t_init=60,
+        t_hot=415,
+        rate_const=.05,
+        sigma=3
     )
-    s.plot_time_series(6000, 2)
+    s.plot_time_series(
+        t_incr=2,
+        n_pt=65
+    )
