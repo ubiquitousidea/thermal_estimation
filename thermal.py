@@ -1,10 +1,16 @@
+# THE NUMPY IMPORTS ARE RIGHT HERE!
+# Consider that you  might not want to
+# override the base 'sum' and 'all'
 from numpy import (
     linspace, array,
-    exp, concatenate
+    exp, concatenate,
+    log, sum, ndarray,
+    pi, all
 )
-from numpy import array_repr as represent
+# RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
 from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
+# PICTURE-MAKERS
 from matplotlib.pyplot import scatter, Figure, Axes
 import matplotlib.pyplot as plt
 
@@ -36,6 +42,28 @@ def temperature(time, temp_far,
     return temp_far - (temp_far - temp_init) * exp(-rate_const * time)
 
 
+def likelihood(time_series, t_f, c, k, sigma):
+    """
+    negative log likelihood of observed time series
+    under the normal errors model.
+    :param time_series: TimeSeries object
+    :param t_f: temperature far away;
+        parameter to temperature function
+    :param c: constant for temperature function
+    :param k: rate constant for temperature function
+    :param sigma: gaussian noise parameter (standard deviation)
+    :return: float. negative log likelihood of
+        observed time series
+    """
+    assert isinstance(time_series, TimeSeries)
+    n = nrow(time_series.series)
+    l = sum(time_series)
+
+    # Adding this constant will not affect the optimal parameters
+    # Only doing this to be correct in calling it the likelihood
+    l += n/2 * log(2 * pi * sigma**2)
+
+
 def add_noise(arr, sigma):
     """
     Add noise to the elements of an array
@@ -62,6 +90,60 @@ def column_bind(arr1, arr2):
     arr2 = array(arr2, ndmin=2)
     _out = concatenate((arr1, arr2), axis=0).transpose()
     return _out
+
+
+def ncol(arr):
+    """
+    Nice R function
+    Made to raise errors when input is not a 2d array
+    :param arr: array
+    :return: number of columns in array
+    """
+    assert isinstance(arr, ndarray)
+    assert len(arr.shape) == 2
+    return arr.shape[1]
+
+
+def nrow(arr):
+    """
+    Another nice, readable R function
+    Made to raise errors when input is not a 2d array
+    :param arr: array
+    :return: number of rows in array
+    """
+    assert isinstance(arr, ndarray)
+    assert len(arr.shape) == 2
+    return arr.shape[0]
+
+
+class TimeSeries(object):
+    def __init__(self):
+        self._array = None
+
+    @classmethod
+    def from_time_temp(cls, times, temps):
+        assert len(times) == len(temps)
+        _ts = cls()
+        _ts.series = column_bind(times, temps)
+        return _ts
+
+    @property
+    def series(self):
+        return self._array
+
+    @series.setter
+    def series(self, value):
+        assert isinstance(value, ndarray)
+        assert ncol(value) == 2
+        self._array = value
+
+    @property
+    def times(self):
+        return self._array[:, 0]
+
+    @property
+    def temperatures(self):
+        return self._array[:, 1]
 
 
 class Simulation(object):
@@ -96,22 +178,21 @@ class Simulation(object):
         self._last_args = None
 
     @staticmethod
-    def times(t_incr, n_pt):
+    def times(t_total, n_pt):
         """
         Produce a list of times
-        :param t_incr: time between time points
+        :param t_total: total elapse time
         :param n_pt: number of time points (number of periods + 1)
         :return: numpy.ndarray (1-d)
         """
-        #TODO: Change signature to accept total time
         _times = linspace(
             start=0,
-            stop=t_incr * (n_pt - 1),
+            stop=t_total,
             num=n_pt
         )
         return _times
 
-    def simulate(self, t_incr, n_pt, random_seed=123):
+    def simulate(self, t_total, n_pt, random_seed=123):
         """
         Simulate the heating by convection
 
@@ -119,7 +200,7 @@ class Simulation(object):
         Zeroth column is times.
         Oneth (second) column is Temperatures.
 
-        :param t_incr: time between measurements (seconds)
+        :param t_total: total elapse time
         :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
         :return: numpy.ndarray. A matrix of temperatures and times
@@ -135,7 +216,7 @@ class Simulation(object):
         #             }
         #     }
         # )
-        times = self.times(t_incr, n_pt)
+        times = self.times(t_total, n_pt)
         temps = temperature(
             time=times,
             temp_far=self.t_hot,
@@ -144,24 +225,29 @@ class Simulation(object):
         )
         set_random_seed(random_seed)
         add_noise(temps, self.sigma)
-        return column_bind(times, temps)
+        _ts = TimeSeries.from_time_temp(times, temps)
+        return _ts
 
-    def plot_time_series(self, t_incr, n_pt, random_seed=123):
+    def plot_time_series(self, t_total=None,
+                         n_pt=None, random_seed=123,
+                         time_series=None):
         """
         Plot a time series of temperatures
-        :param t_incr: time between measurements (seconds)
+        :param t_total: total elapse time
         :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
+        :param time_series: Optional time series (numpy.ndarray)
+            If present, other args are ignored
         :return: None
         """
-        time_series = self.simulate(
-            t_incr=t_incr,
-            n_pt=n_pt,
-            random_seed=random_seed
-        )
+        if time_series is None:
+            time_series = self.simulate(
+                t_total=t_total, n_pt=n_pt,
+                random_seed=random_seed
+            )
         scatter(
-            time_series[:, 0],
-            time_series[:, 1],
+            x=time_series.times,
+            y=time_series.temperatures,
             alpha=.8
         )
         plt.show()
@@ -216,9 +302,9 @@ class Simulation(object):
 
 
 class Estimator(object):
-    def __init__(self, time_dependent_model, observed_time_series):
+    def __init__(self, time_dependent_model, time_series):
         self.tdm = time_dependent_model
-        self.ots = observed_time_series
+        self.ots = time_series
 
     def estimate(self):
         """
@@ -238,11 +324,8 @@ if __name__ == "__main__":
     s = Simulation(
         t_init=60,
         t_hot=415,
-        rate_const=.05,
-        sigma=10
+        rate_const=5*10**-3,
+        sigma=8.5
     )
-    s.plot_time_series(
-        t_incr=2,
-        n_pt=33,
-        random_seed=1729
-    )
+    ts = s.simulate(1800, 33, 1729)
+    s.plot_time_series(time_series=ts)
