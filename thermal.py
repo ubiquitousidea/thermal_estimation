@@ -174,9 +174,6 @@ class Simulation(object):
         self.t_hot = t_hot
         self.rate_const = rate_const
         self.sigma = sigma
-        # >/\/oo\/\<
-        # items to make the class easier to use
-        self._last_args = None
 
     @staticmethod
     def times(t_total, n_pt):
@@ -206,17 +203,6 @@ class Simulation(object):
         :param random_seed: random seed (integer)
         :return: numpy.ndarray. A matrix of temperatures and times
         """
-        # TODO: Add argument storage so sets of methods can share most recently used arg list
-        # self.store_args(
-        #     {
-        #         "simulation_args":
-        #             {
-        #                 "t_max": t_max,
-        #                 "freq": freq,
-        #                 "random_seed": random_seed
-        #             }
-        #     }
-        # )
         times = self.times(t_total, n_pt)
         temps = temperature(
             time=times,
@@ -260,7 +246,9 @@ class Simulation(object):
     @t_init.setter
     def t_init(self, value):
         if value < 0:
-            raise ValueError("Initial Temperature must be a positive number. This is absolute temperature")
+            msg = "Initial Temperature must be a positive " \
+                  "number. This is absolute temperature"
+            raise ValueError(msg)
         else:
             self._t_init = float(value)
 
@@ -271,7 +259,9 @@ class Simulation(object):
     @t_hot.setter
     def t_hot(self, value):
         if value < 0:
-            raise ValueError("Hot temperature must be positive. This is absolute.")
+            msg = "Hot temperature must be positive. " \
+                  "This is absolute."
+            raise ValueError(msg)
         else:
             self._t_hot = float(value)
 
