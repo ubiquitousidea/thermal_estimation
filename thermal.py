@@ -57,7 +57,8 @@ def likelihood(time_series, t_f, c, k, sigma):
     """
     assert isinstance(time_series, TimeSeries)
     n = nrow(time_series.series)
-    l = sum(time_series)
+    # TODO: Finish this.
+    l = 0.
 
     # Adding this constant will not affect the optimal parameters
     # Only doing this to be correct in calling it the likelihood
