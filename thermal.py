@@ -42,14 +42,14 @@ def temperature(time, temp_far,
     return temp_far - (temp_far - temp_init) * exp(-rate_const * time)
 
 
-def likelihood(time_series, t_f, c, k, sigma):
+def nloglik(time_series, t_f, t_i, k, sigma):
     """
     negative log likelihood of observed time series
     under the normal errors model.
     :param time_series: TimeSeries object
     :param t_f: temperature far away;
         parameter to temperature function
-    :param c: constant for temperature function
+    :param t_i: initial temperature (a t=0)
     :param k: rate constant for temperature function
     :param sigma: gaussian noise parameter (standard deviation)
     :return: float. negative log likelihood of
@@ -57,12 +57,11 @@ def likelihood(time_series, t_f, c, k, sigma):
     """
     assert isinstance(time_series, TimeSeries)
     n = nrow(time_series.series)
-    # TODO: Finish this.
-    l = 0.
-
-    # Adding this constant will not affect the optimal parameters
-    # Only doing this to be correct in calling it the likelihood
-    l += n/2 * log(2 * pi * sigma**2)
+    theoretical_temps = temperature(time_series.times, t_f, t_i, k)
+    squared_errors = (time_series.temperatures - theoretical_temps) ** 2
+    l = sum(squared_errors) / (2 * sigma ** 2)
+    l += n/2 * log(2 * pi * sigma ** 2)
+    return l
 
 
 def add_noise(arr, sigma):
