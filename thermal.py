@@ -55,6 +55,7 @@ def nloglik(time_series, t_f, t_i, k, sigma):
     :return: float. negative log likelihood of
         observed time series
     """
+    # TODO: Show that this is convex in (t_f, t_i, k, sigma)
     assert isinstance(time_series, TimeSeries)
     n = nrow(time_series.series)
     theoretical_temps = temperature(time_series.times, t_f, t_i, k)
