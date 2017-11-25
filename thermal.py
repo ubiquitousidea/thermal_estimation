@@ -237,6 +237,8 @@ class Simulation(object):
             y=time_series.temperatures,
             alpha=.8
         )
+        plt.xlabel("Time (s)")
+        plt.ylabel("Temperature (F)")
         plt.show()
 
     @property
@@ -272,7 +274,9 @@ class Simulation(object):
     @rate_const.setter
     def rate_const(self, value):
         if value < 0:
-            raise ValueError("Rate Constant must be positive. 1st Law of Thermodynamics.")
+            msg = "Rate Constant must be positive. " \
+                  "1st Law of Thermodynamics."
+            raise ValueError(msg)
         else:
             self._rate_const = float(value)
 
@@ -315,8 +319,14 @@ if __name__ == "__main__":
     s = Simulation(
         t_init=60,
         t_hot=415,
-        rate_const=5*10**-3,
-        sigma=8.5
+        rate_const=3.5*10**-3,
+        sigma=1.5
     )
-    ts = s.simulate(1800, 33, 1729)
-    s.plot_time_series(time_series=ts)
+    ts = s.simulate(
+        t_total=30*60,
+        n_pt=21,
+        random_seed=144
+    )
+    s.plot_time_series(
+        time_series=ts
+    )
