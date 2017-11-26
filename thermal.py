@@ -27,29 +27,30 @@ that I think are estimable?
 
 
 def temperature(time, temp_far,
-                temp_init, rate_const):
+                delta_init, rate_const):
     """
     Parametric, time dependent temperature function
     :param time: The time(s) at which you want to know the temperature; the variable t
     :param temp_far: the temperature far away (free stream temp)
-    :param temp_init: the initial observed temperature of the object
+    :param delta_init: initial object temperature minus asymptotic temperature
+        the constant that multiplies the exponential term
     :param rate_const: positive real number, ratio of dT/dt to temperature
         difference between the object and its surroundings
         (this is the multiplicative constant in the governing
         differential equation).
     :return: temperature(s) without noise; theoretical temperatures
     """
-    return temp_far - (temp_far - temp_init) * exp(-rate_const * time)
+    return temp_far + delta_init * exp(-rate_const * time)
 
 
-def nloglik(time_series, t_f, t_i, k, sigma):
+def nloglik(time_series, t_f, d_i, k, sigma):
     """
     negative log likelihood of observed time series
     under the normal errors model.
     :param time_series: TimeSeries object
     :param t_f: temperature far away;
         parameter to temperature function
-    :param t_i: initial temperature (a t=0)
+    :param d_i: initial temperature (a t=0)
     :param k: rate constant for temperature function
     :param sigma: gaussian noise parameter (standard deviation)
     :return: float. negative log likelihood of
@@ -58,7 +59,12 @@ def nloglik(time_series, t_f, t_i, k, sigma):
     # TODO: Show that this is convex in (t_f, t_i, k, sigma)
     assert isinstance(time_series, TimeSeries)
     n = nrow(time_series.series)
-    theoretical_temps = temperature(time_series.times, t_f, t_i, k)
+    theoretical_temps = temperature(
+        time=time_series.times,
+        temp_far=t_f,
+        delta_init=d_i,
+        rate_const=k
+    )
     squared_errors = (time_series.temperatures - theoretical_temps) ** 2
     l = sum(squared_errors) / (2 * sigma ** 2)
     l += n/2 * log(2 * pi * sigma ** 2)
@@ -193,27 +199,21 @@ class Simulation(object):
     def simulate(self, t_total, n_pt, random_seed=123):
         """
         Simulate the heating by convection
-
-        Return info:
-        Zeroth column is times.
-        Oneth (second) column is Temperatures.
-
         :param t_total: total elapse time
         :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
-        :return: numpy.ndarray. A matrix of temperatures and times
+        :return: TimeSeries. An array of temperatures and times
         """
         times = self.times(t_total, n_pt)
         temps = temperature(
             time=times,
             temp_far=self.t_hot,
-            temp_init=self.t_init,
+            delta_init=(self.t_init - self.t_hot),
             rate_const=self.rate_const
         )
         set_random_seed(random_seed)
         add_noise(temps, self.sigma)
-        _ts = TimeSeries.from_time_temp(times, temps)
-        return _ts
+        return TimeSeries.from_time_temp(times, temps)
 
     def plot_time_series(self, t_total=None,
                          n_pt=None, random_seed=123,
@@ -239,6 +239,7 @@ class Simulation(object):
         )
         plt.xlabel("Time (s)")
         plt.ylabel("Temperature (F)")
+        plt.title('Temperature Time Series')
         plt.show()
 
     @property
