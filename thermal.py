@@ -7,6 +7,7 @@ from numpy import (
     log, sum, ndarray,
     pi, all
 )
+from numpy.linalg import norm
 # RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
 from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
@@ -69,6 +70,31 @@ def nloglik(time_series, t_f, d_i, k, sigma):
     l = sum(squared_errors) / (2 * sigma ** 2)
     l += n/2 * log(2 * pi * sigma ** 2)
     return l
+
+
+def grad(time_series, t_f, d_i, k, sigma):
+    """
+    Compute the gradient of the negative log likelihood
+    at some point (t_f, d_i, k, sigma)
+    :param time_series: observed time series
+    :param t_f: temperature far away
+    :param d_i: initial temperature difference
+    :param k: rate constant
+    :param sigma: noise parameter
+    :return: gradient vector. numpy.ndarray
+    """
+    assert isinstance(time_series, TimeSeries)
+    times  = time_series.times
+    temps  = time_series.temperatures
+    errors = temperature(times, t_f, d_i, k) - temps
+    sig_sq = sigma ** 2
+    exps   = exp(-k * times)
+    dl_dtf = sum(errors) / sig_sq
+    dl_ddi = sum(errors * exps) / sig_sq
+    dl_dk  = -sum(errors * d_i * times * exps) / sig_sq
+    return array([dl_dtf,
+                  dl_ddi,
+                  dl_dk])
 
 
 def add_noise(arr, sigma):
@@ -297,23 +323,27 @@ class Simulation(object):
         return self._noise_variance
 
 
-class Estimator(object):
-    def __init__(self, time_dependent_model, time_series):
+class Optimizer(object):
+    def __init__(self, time_dependent_model,
+                 objective, gradient, time_series):
         self.tdm = time_dependent_model
+        self.objective = objective
+        self.gradient = gradient
         self.ots = time_series
 
-    def estimate(self):
+    def solve(self, x0, tol=.000001):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
             argument to the model is time while the remaining args
             are parameters
+        :param x0: a starting point for the optimization
+        :param tol: stopping criterion; tolerance on the norm of the gradient
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
-        iterates = []
-        for x in iterates:
-            pass
+        d = grad(self.ots, *x0)  # the gradient at the initial point
+        while norm(d) > tol:
 
 
 if __name__ == "__main__":
@@ -321,7 +351,7 @@ if __name__ == "__main__":
         t_init=60,
         t_hot=415,
         rate_const=3.5*10**-3,
-        sigma=1.5
+        sigma=2.5
     )
     ts = s.simulate(
         t_total=30*60,
