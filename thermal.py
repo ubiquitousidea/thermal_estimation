@@ -373,16 +373,20 @@ class Optimizer(object):
         """
         d = self.objective.gradient(x0)  # the gradient at the initial point
         x = array(x0, copy=True)
-        iterates = [x0]
+        _iterates = [x0]
+        k = 0
+        max_iter = 100
         while norm(d) > tol:
             h = self.objective.hessian(x)
             hinv = inverse(h)
             g = self.objective.gradient(x)
             direction = matrix(hinv) * matrix(g)
             x -= t * direction
-            iterates.append(x)
+            _iterates.append(x)
+            if k > max_iter:
+                break
         self.solution = x
-        return iterates
+        return _iterates
 
 
 if __name__ == "__main__":
@@ -411,6 +415,15 @@ if __name__ == "__main__":
     opt = Optimizer(objective)
     x0 = array([200, 100, .01, 1])  # Initial guess
     iterates = opt.solve(x0)
+    xstar = iterates[-1]
+    print("Completed {:} iterations".format(len(iterates)))
+    print(
+        "Optimal Point: ({:}, {:}, {:})".format(
+            xstar[0],
+            xstar[1],
+            xstar[2]
+        )
+    )
 
 
 
