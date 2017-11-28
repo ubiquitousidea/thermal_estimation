@@ -63,7 +63,7 @@ def nloglik(time_series, t_f, d_i, k, sigma):
     """
     # TODO: Show that this is convex in (t_f, t_i, k, sigma)
     assert isinstance(time_series, TimeSeries)
-    n = nrow(time_series.series)
+    n = time_series.n
     theoretical_temps = temperature(time_series, t_f, d_i, k)
     squared_errors = (time_series.temperatures - theoretical_temps) ** 2
     l = sum(squared_errors) / (2 * sigma ** 2)
@@ -108,6 +108,38 @@ def hessian(time_series, t_f, d_i, k, sigma):
     :param sigma: noise parameter
     :return: a matrix of partial derivatives
     """
+    # variables: t_f = 1, d_i = 2, k = 3
+    n  = time_series.n
+    times = time_series.times
+    temps = time_series.temperatures
+    errors = temperature(times, t_f, d_i, k) - temps
+    sig_sq = sigma ** 2
+    exps = exp(-k * times)
+
+    d11 = n / sig_sq
+    d12 = sum(exps) / sig_sq
+    d13 = -sum(d_i * times * exps) / sig_sq
+    d22 = sum(exps ** 2) / sig_sq
+    d23 =
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     return matrix(noise(3, 3))
 
 
@@ -160,6 +192,10 @@ class TimeSeries(object):
         Represent a time series
         """
         self._array = None
+
+    @property
+    def n(self):
+        return nrow(self._array)
 
     @classmethod
     def from_time_temp(cls, times, temps):
