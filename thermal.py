@@ -5,12 +5,11 @@ from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
     exp, log, sum, ndarray,
-    pi, matrix, zeros
+    pi, matrix, zeros, squeeze
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 # RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
-from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
 from util import add_noise, column_bind, ncol, nrow
 
@@ -81,17 +80,18 @@ def grad(time_series, t_f, d_i, k, sigma):
     :param sigma: noise parameter
     :return: gradient vector. numpy.ndarray
     """
-    # variables: t_f = 1, d_i = 2, k = 3
+    n = time_series.n
     times  = time_series.times
     temps  = time_series.temperatures
-    errors = temperature(times, t_f, d_i, k) - temps
+    errors = temperature(times, t_f, d_i, k) - temps  # Make sure these are arrays not matrices
     sig_sq = sigma ** 2
     exps   = exp(-k * times)     # d error / d d_i
     v      = times * d_i * exps  # -d error / d k
-    g = matrix(zeros((3, 1)))
+    g = matrix(zeros((4, 1)))
     g[0, 0] = sum(errors) / sig_sq
     g[1, 0] = sum(errors * exps) / sig_sq
     g[2, 0] = -sum(errors * v) / sig_sq
+    g[3, 0] = n / sigma - sum(errors ** 2) / sigma ** 3
     return g
 
 
@@ -105,7 +105,6 @@ def hessian(time_series, t_f, d_i, k, sigma):
     :param sigma: noise parameter
     :return: a matrix of partial derivatives
     """
-    # variables: t_f = 1, d_i = 2, k = 3
     n = time_series.n
     times = time_series.times
     temps = time_series.temperatures
@@ -113,34 +112,38 @@ def hessian(time_series, t_f, d_i, k, sigma):
     sig_sq = sigma ** 2
     exps = exp(-k * times)  # d error / d d_i
     v = times * d_i * exps  # -d error / d k
-    h = matrix(zeros((3, 3)))
+    h = matrix(zeros((4, 4)))
 
     h[0, 0] = n / sig_sq
     h[1, 1] = sum(exps ** 2) / sig_sq
     h[2, 2] = sum(v * (v + errors * times)) / sig_sq
+    h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq  # NEW
 
     h[0, 1] = h[1, 0] = sum(exps) / sig_sq
     h[0, 2] = h[2, 0] = -sum(v) / sig_sq
+    h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3  # NEW
     h[1, 2] = h[2, 1] = -sum(exps * (v + errors * times))
+    h[1, 3] = h[3, 1] = -2 * sum(exps * errors) / sigma ** 3  # NEW
+    h[2, 3] = h[3, 2] = 2 * sum(errors * v)  # NEW
 
     return h
 
 
 class Objective(object):
-    def __init__(self, _f, _grad_f, _hess_f, observed_data):
+    def __init__(self, func, grad_f, hess_f, observed_data):
 
         """
         A class to represent the objective function
         the function and its derivatives must take a TimeSeries object
         as its first argument
-        :param _f: the function itself
-        :param _grad_f: the gradient vector of the objective
-        :param _hess_f: the hessian matrix of the objective
+        :param func: the function itself
+        :param grad_f: the gradient vector of the objective (a vector valued function)
+        :param hess_f: the hessian matrix of the objective (a matrix valued function)
         :param observed_data: TimeSeries object
         """
-        self._objective = _f
-        self._grad = _grad_f
-        self._hess = _hess_f
+        self._objective = func
+        self._grad = grad_f
+        self._hess = hess_f
         self._observed_data = None
         self.observed_data = observed_data
 
@@ -380,9 +383,9 @@ class Optimizer(object):
             h = self.objective.hessian(x)
             hinv = inverse(h)
             g = self.objective.gradient(x)
-            direction = matrix(hinv) * matrix(g)
+            direction = array(matrix(hinv) * matrix(g)).squeeze()
             x -= t * direction
-            _iterates.append(x)
+            _iterates.append(array(x, copy=True))
             if k > max_iter:
                 break
         self.solution = x
@@ -401,19 +404,19 @@ if __name__ == "__main__":
         n_pt=50,
         random_seed=144
     )
-    s.plot_time_series(
-        time_series=ts
-    )
+    # s.plot_time_series(
+    #     time_series=ts
+    # )
     objective = Objective(
-        _f=nloglik,
-        _grad_f=grad,
-        _hess_f=hessian,
+        func=nloglik,
+        grad_f=grad,
+        hess_f=hessian,
         observed_data=ts
     )
     # Investigate the shape of this function
     # Plot contours of constant value (2D slices)
     opt = Optimizer(objective)
-    x0 = array([200, 100, .01, 1])  # Initial guess
+    x0 = array([200, 100, .01, 10])  # Initial guess
     iterates = opt.solve(x0)
     xstar = iterates[-1]
     print("Completed {:} iterations".format(len(iterates)))
@@ -421,7 +424,8 @@ if __name__ == "__main__":
         "Optimal Point: ({:}, {:}, {:})".format(
             xstar[0],
             xstar[1],
-            xstar[2]
+            xstar[2],
+            xstar[3]
         )
     )
 
