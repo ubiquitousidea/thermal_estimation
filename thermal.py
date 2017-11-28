@@ -5,7 +5,7 @@ from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
     exp, log, sum, ndarray,
-    pi, matrix
+    pi, matrix, zeros
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -62,7 +62,6 @@ def nloglik(time_series, t_f, d_i, k, sigma):
         observed time series
     """
     # TODO: Show that this is convex in (t_f, t_i, k, sigma)
-    assert isinstance(time_series, TimeSeries)
     n = time_series.n
     theoretical_temps = temperature(time_series, t_f, d_i, k)
     squared_errors = (time_series.temperatures - theoretical_temps) ** 2
@@ -82,19 +81,17 @@ def grad(time_series, t_f, d_i, k, sigma):
     :param sigma: noise parameter
     :return: gradient vector. numpy.ndarray
     """
-    assert isinstance(time_series, TimeSeries)
+    # variables: t_f = 1, d_i = 2, k = 3
     times  = time_series.times
     temps  = time_series.temperatures
     errors = temperature(times, t_f, d_i, k) - temps
     sig_sq = sigma ** 2
-    exps   = exp(-k * times)
-    dl_dtf = sum(errors) / sig_sq
-    dl_ddi = sum(errors * exps) / sig_sq
-    dl_dk  = -sum(errors * d_i * times * exps) / sig_sq
-    g = matrix([dl_dtf,
-                dl_ddi,
-                dl_dk,
-                0.]).T
+    exps   = exp(-k * times)     # d error / d d_i
+    v      = times * d_i * exps  # -d error / d k
+    g = matrix(zeros((3, 1)))
+    g[0, 0] = sum(errors) / sig_sq
+    g[1, 0] = sum(errors * exps) / sig_sq
+    g[2, 0] = -sum(errors * v) / sig_sq
     return g
 
 
@@ -109,38 +106,24 @@ def hessian(time_series, t_f, d_i, k, sigma):
     :return: a matrix of partial derivatives
     """
     # variables: t_f = 1, d_i = 2, k = 3
-    n  = time_series.n
+    n = time_series.n
     times = time_series.times
     temps = time_series.temperatures
     errors = temperature(times, t_f, d_i, k) - temps
     sig_sq = sigma ** 2
-    exps = exp(-k * times)
+    exps = exp(-k * times)  # d error / d d_i
+    v = times * d_i * exps  # -d error / d k
+    h = matrix(zeros((3, 3)))
 
-    d11 = n / sig_sq
-    d12 = sum(exps) / sig_sq
-    d13 = -sum(d_i * times * exps) / sig_sq
-    d22 = sum(exps ** 2) / sig_sq
-    d23 =
+    h[0, 0] = n / sig_sq
+    h[1, 1] = sum(exps ** 2) / sig_sq
+    h[2, 2] = sum(v * (v + errors * times)) / sig_sq
 
+    h[0, 1] = h[1, 0] = sum(exps) / sig_sq
+    h[0, 2] = h[2, 0] = -sum(v) / sig_sq
+    h[1, 2] = h[2, 1] = -sum(exps * (v + errors * times))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    return matrix(noise(3, 3))
+    return h
 
 
 class Objective(object):
