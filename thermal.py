@@ -93,7 +93,8 @@ def grad(time_series, t_f, d_i, k, sigma):
     dl_dk  = -sum(errors * d_i * times * exps) / sig_sq
     g = matrix([dl_dtf,
                 dl_ddi,
-                dl_dk]).T
+                dl_dk,
+                0.]).T
     return g
 
 
@@ -108,6 +109,49 @@ def hessian(time_series, t_f, d_i, k, sigma):
     :return: a matrix of partial derivatives
     """
     return matrix(noise(3, 3))
+
+
+class Objective(object):
+    def __init__(self, _f, _grad_f, _hess_f, observed_data):
+
+        """
+        A class to represent the objective function
+        the function and its derivatives must take a TimeSeries object
+        as its first argument
+        :param _f: the function itself
+        :param _grad_f: the gradient vector of the objective
+        :param _hess_f: the hessian matrix of the objective
+        :param observed_data: TimeSeries object
+        """
+        self._objective = _f
+        self._grad = _grad_f
+        self._hess = _hess_f
+        self._observed_data = None
+        self.observed_data = observed_data
+
+    @property
+    def observed_data(self):
+        return self._observed_data
+
+    @observed_data.setter
+    def observed_data(self, value):
+        assert isinstance(value, TimeSeries)
+        self._observed_data = value
+
+    def value(self, x):
+        """
+        Return the function value at a given point
+        dimension of x must be compatible with the positional arguments in self.objective
+        :param x: the point at which the function will be evaluated
+        :return: float
+        """
+        return self._objective(self.observed_data, *x)
+
+    def gradient(self, x):
+        return self._grad(self.observed_data, *x)
+
+    def hessian(self, x):
+        return self._hess(self.observed_data, *x)
 
 
 class TimeSeries(object):
@@ -288,23 +332,15 @@ class Simulation(object):
 
 
 class Optimizer(object):
-    def __init__(self, time_dependent_model,
-                 objective, time_series, gradient=None,
-                 hessian_matrix=None):
+    def __init__(self, objective):
         """
-        :param time_dependent_model: a function whose first argument is vector of times follow parameters
         :param objective: the function whose value is to be minimized by adjusting parameters
-        :param time_series: an observed time series (TimeSeries)
-        :param gradient: the vector of partial derivatives of the objective (function of parameters)
-        :param hessian_matrix: the matrix of second partial derivatives (function of parameters)
         """
-        self.tdm = time_dependent_model
+        assert isinstance(objective, Objective)
         self.objective = objective
-        self.gradient = gradient
-        self.hessian = hessian_matrix
-        self.ots = time_series
+        self.solution = None
 
-    def solve(self, x0, t=1, tol=.000001):
+    def solve(self, x0, t=1., tol=.000001):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -316,28 +352,55 @@ class Optimizer(object):
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
-        d = self.gradient(self.ots, *x0)  # the gradient at the initial point
+        d = self.objective.gradient(x0)  # the gradient at the initial point
         x = array(x0, copy=True)
         iterates = [x0]
         while norm(d) > tol:
-            h = self.hessian(self.ots, *x)
+            h = self.objective.hessian(x)
             hinv = inverse(h)
-            g = self.gradient(self.ots, *x)
-            direction = -matrix(hinv) * matrix(g)
+            g = self.objective.gradient(x)
+            direction = matrix(hinv) * matrix(g)
             x -= t * direction
+            iterates.append(x)
+        self.solution = x
+        return iterates
+
 
 if __name__ == "__main__":
     s = Simulation(
-        t_init=60,
-        t_hot=415,
+        t_init=70,
+        t_hot=300,
         rate_const=3.5*10**-3,
-        sigma=2.5
+        sigma=1.5
     )
     ts = s.simulate(
         t_total=30*60,
-        n_pt=65,
+        n_pt=50,
         random_seed=144
     )
     s.plot_time_series(
         time_series=ts
     )
+    objective = Objective(
+        _f=nloglik,
+        _grad_f=grad,
+        _hess_f=hessian,
+        observed_data=ts
+    )
+    # Investigate the shape of this function
+    # Plot contours of constant value (2D slices)
+    opt = Optimizer(objective)
+    x0 = array([200, 100, .01, 1])  # Initial guess
+    iterates = opt.solve(x0)
+
+
+
+
+
+
+
+
+
+
+
+
