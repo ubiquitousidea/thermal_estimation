@@ -1,13 +1,12 @@
 # THE NUMPY IMPORTS ARE RIGHT HERE!
-# Consider that you  might not want to
-# override the base 'sum' and 'all'
 from numpy import (
     linspace, array,
     exp, concatenate,
     log, sum, ndarray,
-    pi, all
+    pi, all, matrix
 )
 from numpy.linalg import norm
+from numpy.linalg import inv as inverse
 # RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
 from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
@@ -41,7 +40,13 @@ def temperature(time, temp_far,
         differential equation).
     :return: temperature(s) without noise; theoretical temperatures
     """
-    return temp_far + delta_init * exp(-rate_const * time)
+    if isinstance(time, ndarray):
+        time_array = time
+    elif isinstance(time, TimeSeries):
+        time_array = time.times
+    else:
+        raise TypeError
+    return temp_far + delta_init * exp(-rate_const * time_array)
 
 
 def nloglik(time_series, t_f, d_i, k, sigma):
@@ -60,27 +65,22 @@ def nloglik(time_series, t_f, d_i, k, sigma):
     # TODO: Show that this is convex in (t_f, t_i, k, sigma)
     assert isinstance(time_series, TimeSeries)
     n = nrow(time_series.series)
-    theoretical_temps = temperature(
-        time=time_series.times,
-        temp_far=t_f,
-        delta_init=d_i,
-        rate_const=k
-    )
+    theoretical_temps = temperature(time_series, t_f, d_i, k)
     squared_errors = (time_series.temperatures - theoretical_temps) ** 2
     l = sum(squared_errors) / (2 * sigma ** 2)
     l += n/2 * log(2 * pi * sigma ** 2)
     return l
 
 
-def grad(time_series, t_f, d_i, k, sigma):
+def grad(t_f, d_i, k, sigma, time_series):
     """
     Compute the gradient of the negative log likelihood
     at some point (t_f, d_i, k, sigma)
-    :param time_series: observed time series
     :param t_f: temperature far away
     :param d_i: initial temperature difference
     :param k: rate constant
     :param sigma: noise parameter
+    :param time_series: observed time series
     :return: gradient vector. numpy.ndarray
     """
     assert isinstance(time_series, TimeSeries)
@@ -92,9 +92,23 @@ def grad(time_series, t_f, d_i, k, sigma):
     dl_dtf = sum(errors) / sig_sq
     dl_ddi = sum(errors * exps) / sig_sq
     dl_dk  = -sum(errors * d_i * times * exps) / sig_sq
-    return array([dl_dtf,
-                  dl_ddi,
-                  dl_dk])
+    g = matrix([dl_dtf,
+                dl_ddi,
+                dl_dk]).T
+    return g
+
+
+def hessian(t_f, d_i, k, sigma, time_series):
+    """
+    A matrix of partial derivatives
+    :param t_f: temperature far away
+    :param d_i: initial temperature difference
+    :param k: rate constant
+    :param sigma: noise parameter
+    :param time_series: observed time series
+    :return: a matrix of partial derivatives
+    """
+    return matrix(noise(3, 3))
 
 
 def add_noise(arr, sigma):
@@ -151,6 +165,9 @@ def nrow(arr):
 
 class TimeSeries(object):
     def __init__(self):
+        """
+        Represent a time series
+        """
         self._array = None
 
     @classmethod
@@ -325,26 +342,42 @@ class Simulation(object):
 
 class Optimizer(object):
     def __init__(self, time_dependent_model,
-                 objective, gradient, time_series):
+                 objective, time_series, gradient=None,
+                 hessian_matrix=None):
+        """
+        :param time_dependent_model: a function whose first argument is vector of times follow parameters
+        :param objective: the function whose value is to be minimized by adjusting parameters
+        :param time_series: an observed time series (TimeSeries)
+        :param gradient: the vector of partial derivatives of the objective (function of parameters)
+        :param hessian_matrix: the matrix of second partial derivatives (function of parameters)
+        """
         self.tdm = time_dependent_model
         self.objective = objective
         self.gradient = gradient
+        self.hessian = hessian_matrix
         self.ots = time_series
 
-    def solve(self, x0, tol=.000001):
+    def solve(self, x0, t=1, tol=.000001):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
             argument to the model is time while the remaining args
             are parameters
         :param x0: a starting point for the optimization
+        :param t: newton step size parameter
         :param tol: stopping criterion; tolerance on the norm of the gradient
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
-        d = grad(self.ots, *x0)  # the gradient at the initial point
+        d = self.gradient(self.ots, *x0)  # the gradient at the initial point
+        x = array(x0, copy=True)
+        iterates = [x0]
         while norm(d) > tol:
-
+            h = self.hessian(self.ots, *x)
+            hinv = inverse(h)
+            g = self.gradient(self.ots, *x)
+            direction = -matrix(hinv) * matrix(g)
+            x -= t * direction
 
 if __name__ == "__main__":
     s = Simulation(
@@ -355,7 +388,7 @@ if __name__ == "__main__":
     )
     ts = s.simulate(
         t_total=30*60,
-        n_pt=21,
+        n_pt=65,
         random_seed=144
     )
     s.plot_time_series(
