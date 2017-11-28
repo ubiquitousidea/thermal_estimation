@@ -1,19 +1,18 @@
 # THE NUMPY IMPORTS ARE RIGHT HERE!
+import matplotlib.pyplot as plt
+# PICTURE-MAKERS
+from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
-    exp, concatenate,
-    log, sum, ndarray,
-    pi, all, matrix
+    exp, log, sum, ndarray,
+    pi, matrix
 )
-from numpy.linalg import norm
 from numpy.linalg import inv as inverse
+from numpy.linalg import norm
 # RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
 from numpy.random import randn as noise
 from numpy.random import seed as set_random_seed
-# PICTURE-MAKERS
-from matplotlib.pyplot import scatter, Figure, Axes
-import matplotlib.pyplot as plt
-
+from util import add_noise, column_bind, ncol, nrow
 
 """
 Want to estimate the parameters of a heating model given a
@@ -72,15 +71,15 @@ def nloglik(time_series, t_f, d_i, k, sigma):
     return l
 
 
-def grad(t_f, d_i, k, sigma, time_series):
+def grad(time_series, t_f, d_i, k, sigma):
     """
     Compute the gradient of the negative log likelihood
     at some point (t_f, d_i, k, sigma)
+    :param time_series: observed time series
     :param t_f: temperature far away
     :param d_i: initial temperature difference
     :param k: rate constant
     :param sigma: noise parameter
-    :param time_series: observed time series
     :return: gradient vector. numpy.ndarray
     """
     assert isinstance(time_series, TimeSeries)
@@ -98,69 +97,17 @@ def grad(t_f, d_i, k, sigma, time_series):
     return g
 
 
-def hessian(t_f, d_i, k, sigma, time_series):
+def hessian(time_series, t_f, d_i, k, sigma):
     """
     A matrix of partial derivatives
+    :param time_series: observed time series
     :param t_f: temperature far away
     :param d_i: initial temperature difference
     :param k: rate constant
     :param sigma: noise parameter
-    :param time_series: observed time series
     :return: a matrix of partial derivatives
     """
     return matrix(noise(3, 3))
-
-
-def add_noise(arr, sigma):
-    """
-    Add noise to the elements of an array
-    MODIFIES ARGUMENT IN PLACE
-    :param arr: a numpy.ndarray
-    :return: NoneType. Modifies argument in place
-    """
-    dims = arr.shape
-    arr += sigma * noise(*dims)
-
-
-def column_bind(arr1, arr2):
-    """
-    Take two one-dimensional arrays,
-        glue them together, and return a nx2 array
-
-    Name chosen to be consistent with R
-
-    :param arr1: numpy.ndarray
-    :param arr2: numpy.ndarray
-    :return: numpy.ndarray
-    """
-    arr1 = array(arr1, ndmin=2)
-    arr2 = array(arr2, ndmin=2)
-    _out = concatenate((arr1, arr2), axis=0).transpose()
-    return _out
-
-
-def ncol(arr):
-    """
-    Nice R function
-    Made to raise errors when input is not a 2d array
-    :param arr: array
-    :return: number of columns in array
-    """
-    assert isinstance(arr, ndarray)
-    assert len(arr.shape) == 2
-    return arr.shape[1]
-
-
-def nrow(arr):
-    """
-    Another nice, readable R function
-    Made to raise errors when input is not a 2d array
-    :param arr: array
-    :return: number of rows in array
-    """
-    assert isinstance(arr, ndarray)
-    assert len(arr.shape) == 2
-    return arr.shape[0]
 
 
 class TimeSeries(object):
