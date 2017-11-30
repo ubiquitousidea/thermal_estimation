@@ -24,107 +24,106 @@ that I think are estimable?
 """
 
 
-def temperature(time, temp_far,
-                delta_init, rate_const):
+def temperature(t, a, b, c):
     """
     Parametric, time dependent temperature function
-    :param time: The time(s) at which you want to know the temperature; the variable t
-    :param temp_far: the temperature far away (free stream temp)
-    :param delta_init: initial object temperature minus asymptotic temperature
+    :param t: The time(s) at which you want to know the temperature; the variable t
+    :param a: the temperature far away (free stream temp)
+    :param b: initial object temperature minus asymptotic temperature
         the constant that multiplies the exponential term
-    :param rate_const: positive real number, ratio of dT/dt to temperature
+    :param c: positive real number, ratio of dT/dt to temperature
         difference between the object and its surroundings
         (this is the multiplicative constant in the governing
         differential equation).
     :return: temperature(s) without noise; theoretical temperatures
     """
-    if isinstance(time, ndarray):
-        time_array = time
-    elif isinstance(time, TimeSeries):
-        time_array = time.times
-    else:
-        raise TypeError
-    return temp_far + delta_init * exp(-rate_const * time_array)
+    return a + b * exp(-c * t)
 
 
-def nloglik(time_series, t_f, d_i, k, sigma):
+def nloglik(time_series, a, b, c, sigma):
     """
     negative log likelihood of observed time series
     under the normal errors model.
     :param time_series: TimeSeries object
-    :param t_f: temperature far away;
+    :param a: temperature far away;
         parameter to temperature function
-    :param d_i: initial temperature (a t=0)
-    :param k: rate constant for temperature function
+    :param b: initial temperature (a t=0)
+    :param c: rate constant for temperature function
     :param sigma: gaussian noise parameter (standard deviation)
-    :return: float. negative log likelihood of
+    :return: float. negative log likelihood of parameters given
         observed time series
     """
-    # TODO: Show that this is convex in (t_f, t_i, k, sigma)
     n = time_series.n
-    theoretical_temps = temperature(time_series, t_f, d_i, k)
-    squared_errors = (time_series.temperatures - theoretical_temps) ** 2
-    l = sum(squared_errors) / (2 * sigma ** 2)
-    l += n/2 * log(2 * pi * sigma ** 2)
+    times = time_series.times
+    temps = time_series.temperatures
+    sig_sq = sigma ** 2
+    errors = temperature(times, a, b, c) - temps
+    l = sum(errors ** 2) / (2 * sig_sq)
+    l += n/2 * log(2 * pi * sig_sq)
     return l
 
 
-def grad(time_series, t_f, d_i, k, sigma):
+def grad(time_series, a, b, c, sigma):
     """
     Compute the gradient of the negative log likelihood
-    at some point (t_f, d_i, k, sigma)
+    at some point (a,b,c,sigma)
     :param time_series: observed time series
-    :param t_f: temperature far away
-    :param d_i: initial temperature difference
-    :param k: rate constant
+    :param a: temperature far away
+    :param b: initial temperature difference
+    :param c: rate constant
     :param sigma: noise parameter
     :return: gradient vector. numpy.ndarray
     """
     n = time_series.n
     times  = time_series.times
     temps  = time_series.temperatures
-    errors = temperature(times, t_f, d_i, k) - temps  # Make sure these are arrays not matrices
+    errors = temperature(times, a, b, c) - temps
     sig_sq = sigma ** 2
-    exps   = exp(-k * times)     # d error / d d_i
-    v      = times * d_i * exps  # -d error / d k
+
+    dl_db  = exp(-c * times)
+    dl_dc  = -times * b * exp(-c * times)
+
     g = matrix(zeros((4, 1)))
+
     g[0, 0] = sum(errors) / sig_sq
-    g[1, 0] = sum(errors * exps) / sig_sq
-    g[2, 0] = -sum(errors * v) / sig_sq
+    g[1, 0] = sum(errors * dl_db) / sig_sq
+    g[2, 0] = sum(errors * dl_dc) / sig_sq
     g[3, 0] = n / sigma - sum(errors ** 2) / sigma ** 3
     return g
 
 
-def hessian(time_series, t_f, d_i, k, sigma):
+def hessian(time_series, a, b, c, sigma):
     """
     A matrix of partial derivatives
     :param time_series: observed time series
-    :param t_f: temperature far away
-    :param d_i: initial temperature difference
-    :param k: rate constant
+    :param a: temperature far away
+    :param b: initial temperature difference
+    :param c: rate constant
     :param sigma: noise parameter
     :return: a matrix of partial derivatives
     """
     n = time_series.n
     times = time_series.times
     temps = time_series.temperatures
-    errors = temperature(times, t_f, d_i, k) - temps
+    errors = temperature(times, a, b, c) - temps
     sig_sq = sigma ** 2
-    exps = exp(-k * times)  # d error / d d_i
-    v = times * d_i * exps  # -d error / d k
+
+    dl_db = exp(-c * times)
+    dl_dc = -times * b * exp(-c * times)
+
     h = matrix(zeros((4, 4)))
 
     h[0, 0] = n / sig_sq
-    h[1, 1] = sum(exps ** 2) / sig_sq
-    h[2, 2] = sum(v * (v + errors * times)) / sig_sq
-    h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq  # NEW
+    h[1, 1] = sum(dl_db ** 2) / sig_sq
+    h[2, 2] = sum(dl_dc * (dl_dc - errors * times)) / sig_sq
+    h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq
 
-    h[0, 1] = h[1, 0] = sum(exps) / sig_sq
-    h[0, 2] = h[2, 0] = -sum(v) / sig_sq
-    h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3  # NEW
-    h[1, 2] = h[2, 1] = -sum(exps * (v + errors * times))
-    h[1, 3] = h[3, 1] = -2 * sum(exps * errors) / sigma ** 3  # NEW
-    h[2, 3] = h[3, 2] = 2 * sum(errors * v)  # NEW
+    h[0, 1] = h[1, 0] = sum(dl_db) / sig_sq
+    h[0, 2] = h[2, 0] = sum(dl_dc) / sig_sq
+    h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3
+    h[1, 2] = h[2, 1] = sum(dl_db * (dl_dc - errors * times))
+    h[1, 3] = h[3, 1] = -2 * sum(dl_db * errors) / sigma ** 3
+    h[2, 3] = h[3, 2] = -2 * sum(errors * dl_dc)
 
     return h
 
@@ -262,10 +261,10 @@ class Simulation(object):
         """
         times = self.times(t_total, n_pt)
         temps = temperature(
-            time=times,
-            temp_far=self.t_hot,
-            delta_init=(self.t_init - self.t_hot),
-            rate_const=self.rate_const
+            t=times,
+            a=self.t_hot,
+            b=(self.t_init - self.t_hot),
+            c=self.rate_const
         )
         set_random_seed(random_seed)
         add_noise(temps, self.sigma)
@@ -362,7 +361,7 @@ class Optimizer(object):
         self.objective = objective
         self.solution = None
 
-    def solve(self, x0, t=1., tol=.000001):
+    def solve_newton(self, x0, t=1., tol=.000001):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -378,7 +377,7 @@ class Optimizer(object):
         x = array(x0, copy=True)
         _iterates = [x0]
         k = 0
-        max_iter = 100
+        max_iter = 30
         while norm(d) > tol:
             h = self.objective.hessian(x)
             hinv = inverse(h)
@@ -404,21 +403,16 @@ if __name__ == "__main__":
         n_pt=50,
         random_seed=144
     )
-    # s.plot_time_series(
-    #     time_series=ts
-    # )
     objective = Objective(
         func=nloglik,
         grad_f=grad,
         hess_f=hessian,
         observed_data=ts
     )
-    # Investigate the shape of this function
-    # Plot contours of constant value (2D slices)
     opt = Optimizer(objective)
-    x0 = array([200, 100, .01, 10])  # Initial guess
-    iterates = opt.solve(x0)
-    xstar = iterates[-1]
+    x0 = array([200, 100, .01, 5])  # Initial guess
+    iterates = opt.solve_newton(x0)
+    xstar = opt.solution
     print("Completed {:} iterations".format(len(iterates)))
     print(
         "Optimal Point: ({:}, {:}, {:})".format(
