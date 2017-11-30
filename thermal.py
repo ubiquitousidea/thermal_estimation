@@ -412,7 +412,7 @@ class Optimizer(object):
         self.optimal_point = None
         self.optimal_value = None
 
-    def solve_newton(self, x0, t=1., tol=.0001):
+    def solve_newton(self, x0, t=1., tol=.000001, max_iter=100):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -421,6 +421,7 @@ class Optimizer(object):
         :param x0: a starting point for the optimization
         :param t: newton step size parameter
         :param tol: stopping criterion; tolerance on the norm of the gradient
+        :param max_iter: maximum number of iterations to perform
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
@@ -428,7 +429,6 @@ class Optimizer(object):
         x = array(x0, copy=True, dtype=DT)
         self.store_iteration(x)
         k = 0
-        max_iter = 2000
         while norm(d) > tol:
             h = self.objective.hessian(x)
             hinv = inverse(h)
@@ -480,22 +480,23 @@ if __name__ == "__main__":
     s = Simulation(
         t_init=50,
         t_hot=300,
-        rate_const=3.5*10**-3,
+        rate_const=3.75*10**-3,
         sigma=1.5
     )
-    ts = s.simulate(
-        t_total=30*60,
-        n_pt=50,
-        random_seed=1729
-    )
-    objective = Objective(
-        func=nloglik,
-        grad_f=grad,
-        hess_f=hessian,
-        observed_data=ts,
-        sigma=1.5
-    )
-    opt = Optimizer(objective)
-    opt.solve_newton(x0=[500, -200, .003])
-    opt.report_results()
-    opt.plot_convergence()
+    for randomseed in range(20):
+        ts = s.simulate(
+            t_total=30*60,
+            n_pt=50,
+            random_seed=randomseed
+        )
+        objective = Objective(
+            func=nloglik,
+            grad_f=grad,
+            hess_f=hessian,
+            observed_data=ts,
+            sigma=1.5
+        )
+        opt = Optimizer(objective)
+        opt.solve_newton(x0=[500, -200, .003], max_iter=20)
+        opt.report_results()
+    # opt.plot_convergence()
