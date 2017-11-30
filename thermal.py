@@ -63,7 +63,7 @@ def nloglik(time_series, a, b, c, sigma):
     return l
 
 
-def grad(time_series, a, b, c, sigma):
+def grad(time_series, a, b, c, t, sigma):
     """
     Compute the gradient of the negative log likelihood
     at some point (a,b,c,sigma)
@@ -71,6 +71,7 @@ def grad(time_series, a, b, c, sigma):
     :param a: temperature far away
     :param b: initial temperature difference
     :param c: rate constant
+    :param t: divisor for the log barrier on c
     :param sigma: noise parameter
     :return: gradient vector. numpy.ndarray
     """
@@ -85,19 +86,26 @@ def grad(time_series, a, b, c, sigma):
 
     g = matrix(zeros((3, 1)))
 
-    g[0, 0] = sum(errors) / sig_sq
-    g[1, 0] = sum(errors * u) / sig_sq
-    g[2, 0] = sum(errors * v) / sig_sq
+    g[0, 0] = sum(errors)
+    g[1, 0] = sum(errors * u)
+    g[2, 0] = sum(errors * v) - (c * t) ** -1
+
+    # This extra term (c*t)**-1 in the partial derivative wrt c
+    # comes from the log barrier function to keep c positive.
+
+    g /= sig_sq
+
     return g
 
 
-def hessian(time_series, a, b, c, sigma):
+def hessian(time_series, a, b, c, t, sigma):
     """
     A matrix of partial derivatives
     :param time_series: observed time series
     :param a: temperature far away
     :param b: initial temperature difference
     :param c: rate constant
+    :param t: divisor for the log barrier on c
     :param sigma: noise parameter
     :return: a matrix of partial derivatives
     """
@@ -120,18 +128,13 @@ def hessian(time_series, a, b, c, sigma):
     h[0, 2] = h[2, 0] = sum(v)
     h[1, 2] = h[2, 1] = sum(u * (v - errors * times))
 
-    # h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3
-    # h[1, 3] = h[3, 1] = -2 * sum(dl_db * errors) / sigma ** 3
-    # h[2, 3] = h[3, 2] = -2 * sum(errors * dl_dc)
-    # h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq
-
     h /= sig_sq
 
     return h
 
 
 class Objective(object):
-    def __init__(self, func, grad_f, hess_f, observed_data, sigma):
+    def __init__(self, func, grad_f, hess_f, observed_data, sigma, t):
 
         """
         A class to represent the objective function
@@ -141,10 +144,13 @@ class Objective(object):
         :param grad_f: the gradient vector of the objective (a vector valued function)
         :param hess_f: the hessian matrix of the objective (a matrix valued function)
         :param observed_data: TimeSeries object
+        :param sigma: the noise parameter for the function (assumed to be known)
+        :param t: divisor of the log barrier function. Increase this to steepen the penalty for violating a constraint
         """
         self._objective = func
         self._grad = grad_f
         self._hess = hess_f
+        self._t = t
         self._observed_data = None
         self._sigma = None
         self.observed_data = observed_data
@@ -188,6 +194,7 @@ class Objective(object):
             a=x[0],
             b=x[1],
             c=x[2],
+            t=self._t,
             sigma=self.sigma
         )
 
@@ -197,6 +204,7 @@ class Objective(object):
             a=x[0],
             b=x[1],
             c=x[2],
+            t=self._t,
             sigma=self.sigma
         )
 
@@ -480,7 +488,7 @@ if __name__ == "__main__":
     s = Simulation(
         t_init=50,
         t_hot=300,
-        rate_const=3.75*10**-3,
+        rate_const=3.5*10**-3,
         sigma=1.5
     )
     for randomseed in range(20):
@@ -494,9 +502,10 @@ if __name__ == "__main__":
             grad_f=grad,
             hess_f=hessian,
             observed_data=ts,
-            sigma=1.5
+            sigma=1.5,
+            t=100
         )
         opt = Optimizer(objective)
-        opt.solve_newton(x0=[500, -200, .003], max_iter=20)
+        opt.solve_newton(x0=[700, -450, .0039], max_iter=50)
         opt.report_results()
     # opt.plot_convergence()
