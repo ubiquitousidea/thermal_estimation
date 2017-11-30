@@ -426,7 +426,7 @@ class Optimizer(object):
         x = array(x0, copy=True)
         self.store_iteration(x)
         k = 0
-        max_iter = 30
+        max_iter = 2000
         while norm(d) > tol:
             h = self.objective.hessian(x)
             hinv = inverse(h)
@@ -463,8 +463,7 @@ class Optimizer(object):
 
     def report_results(self):
         print("Completed {:} iterations".format(self.iterations))
-        point_string = str(self.optimal_point)
-        print("Optimal Point: ({:})".format(point_string))
+        print("Optimal Point: ({:})".format(self.optimal_point))
 
 
 if __name__ == "__main__":
@@ -487,5 +486,5 @@ if __name__ == "__main__":
         sigma=1.5
     )
     opt = Optimizer(objective)
-    opt.solve_newton(x0=[400, -100, 2.5*10**-3])
+    opt.solve_newton(x0=[500, -200, .003])
     opt.report_results()
