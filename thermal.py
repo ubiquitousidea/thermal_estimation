@@ -80,15 +80,14 @@ def grad(time_series, a, b, c, sigma):
     errors = temperature(times, a, b, c) - temps
     sig_sq = sigma ** 2
 
-    dl_db  = exp(-c * times)
-    dl_dc  = -times * b * exp(-c * times)
+    u  = exp(-c * times)
+    v  = -times * b * u
 
-    g = matrix(zeros((4, 1)))
+    g = matrix(zeros((3, 1)))
 
     g[0, 0] = sum(errors) / sig_sq
-    g[1, 0] = sum(errors * dl_db) / sig_sq
-    g[2, 0] = sum(errors * dl_dc) / sig_sq
-    g[3, 0] = n / sigma - sum(errors ** 2) / sigma ** 3
+    g[1, 0] = sum(errors * u) / sig_sq
+    g[2, 0] = sum(errors * v) / sig_sq
     return g
 
 
@@ -108,28 +107,31 @@ def hessian(time_series, a, b, c, sigma):
     errors = temperature(times, a, b, c) - temps
     sig_sq = sigma ** 2
 
-    dl_db = exp(-c * times)
-    dl_dc = -times * b * exp(-c * times)
+    u = exp(-c * times)
+    v = -times * b * u
 
-    h = matrix(zeros((4, 4)))
+    h = matrix(zeros((3, 3)))
 
-    h[0, 0] = n / sig_sq
-    h[1, 1] = sum(dl_db ** 2) / sig_sq
-    h[2, 2] = sum(dl_dc * (dl_dc - errors * times)) / sig_sq
-    h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq
+    h[0, 0] = n
+    h[1, 1] = sum(u ** 2)
+    h[2, 2] = sum(v ** 2 + errors * times ** 2 * b * u)
 
-    h[0, 1] = h[1, 0] = sum(dl_db) / sig_sq
-    h[0, 2] = h[2, 0] = sum(dl_dc) / sig_sq
-    h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3
-    h[1, 2] = h[2, 1] = sum(dl_db * (dl_dc - errors * times))
-    h[1, 3] = h[3, 1] = -2 * sum(dl_db * errors) / sigma ** 3
-    h[2, 3] = h[3, 2] = -2 * sum(errors * dl_dc)
+    h[0, 1] = h[1, 0] = sum(u)
+    h[0, 2] = h[2, 0] = sum(v)
+    h[1, 2] = h[2, 1] = sum(u * (v - errors * times))
+
+    # h[0, 3] = h[3, 0] = -2 * sum(errors ** 2) / sigma ** 3
+    # h[1, 3] = h[3, 1] = -2 * sum(dl_db * errors) / sigma ** 3
+    # h[2, 3] = h[3, 2] = -2 * sum(errors * dl_dc)
+    # h[3, 3] = 3 * sum(errors ** 2) / sigma ** 4 - n / sig_sq
+
+    h /= sig_sq
 
     return h
 
 
 class Objective(object):
-    def __init__(self, func, grad_f, hess_f, observed_data):
+    def __init__(self, func, grad_f, hess_f, observed_data, sigma):
 
         """
         A class to represent the objective function
@@ -144,7 +146,9 @@ class Objective(object):
         self._grad = grad_f
         self._hess = hess_f
         self._observed_data = None
+        self._sigma = None
         self.observed_data = observed_data
+        self.sigma = sigma
 
     @property
     def observed_data(self):
@@ -155,6 +159,15 @@ class Objective(object):
         assert isinstance(value, TimeSeries)
         self._observed_data = value
 
+    @property
+    def sigma(self):
+        return self._sigma
+
+    @sigma.setter
+    def sigma(self, value):
+        assert isinstance(value, float)
+        self._sigma = abs(value)
+
     def value(self, x):
         """
         Return the function value at a given point
@@ -162,13 +175,31 @@ class Objective(object):
         :param x: the point at which the function will be evaluated
         :return: float
         """
-        return self._objective(self.observed_data, *x)
+        return self._objective(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            sigma=self.sigma
+        )
 
     def gradient(self, x):
-        return self._grad(self.observed_data, *x)
+        return self._grad(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            sigma=self.sigma
+        )
 
     def hessian(self, x):
-        return self._hess(self.observed_data, *x)
+        return self._hess(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            sigma=self.sigma
+        )
 
 
 class TimeSeries(object):
@@ -177,6 +208,22 @@ class TimeSeries(object):
         Represent a time series
         """
         self._array = None
+
+    def plot(self, add_labels=False):
+        scatter(
+            x=self.times,
+            y=self.temperatures,
+            alpha=.8
+        )
+        if add_labels:
+            self.set_plot_labels()
+        plt.show()
+
+    @staticmethod
+    def set_plot_labels():
+        plt.xlabel("Time (s)")
+        plt.ylabel("Temperature (F)")
+        plt.title('Temperature Time Series')
 
     @property
     def n(self):
@@ -359,7 +406,9 @@ class Optimizer(object):
         """
         assert isinstance(objective, Objective)
         self.objective = objective
-        self.solution = None
+        self._iterates = []
+        self.optimal_point = None
+        self.optimal_value = None
 
     def solve_newton(self, x0, t=1., tol=.000001):
         """
@@ -375,7 +424,7 @@ class Optimizer(object):
         """
         d = self.objective.gradient(x0)  # the gradient at the initial point
         x = array(x0, copy=True)
-        _iterates = [x0]
+        self.store_iteration(x)
         k = 0
         max_iter = 30
         while norm(d) > tol:
@@ -384,16 +433,43 @@ class Optimizer(object):
             g = self.objective.gradient(x)
             direction = array(matrix(hinv) * matrix(g)).squeeze()
             x -= t * direction
-            _iterates.append(array(x, copy=True))
-            if k > max_iter:
+            self.store_iteration(x)
+            k += 1
+            if k >= max_iter:
                 break
-        self.solution = x
-        return _iterates
+        self.optimal_point = x
+        self.optimal_value = self.objective.value(x)
+
+    def store_iteration(self, x):
+        """
+        Store an iteration (point and function value)
+        :param x: the current point in the optimization
+        :return: None
+        """
+        self._iterates.append(
+            {
+                'point': array(x, copy=True),
+                'value': self.objective.value(x)
+            }
+        )
+
+    @property
+    def iterations(self):
+        """
+        number of iterations that the optimization performed
+        :return: int
+        """
+        return len(self._iterates) - 1
+
+    def report_results(self):
+        print("Completed {:} iterations".format(self.iterations))
+        point_string = str(self.optimal_point)
+        print("Optimal Point: ({:})".format(point_string))
 
 
 if __name__ == "__main__":
     s = Simulation(
-        t_init=70,
+        t_init=50,
         t_hot=300,
         rate_const=3.5*10**-3,
         sigma=1.5
@@ -401,36 +477,15 @@ if __name__ == "__main__":
     ts = s.simulate(
         t_total=30*60,
         n_pt=50,
-        random_seed=144
+        random_seed=1729
     )
     objective = Objective(
         func=nloglik,
         grad_f=grad,
         hess_f=hessian,
-        observed_data=ts
+        observed_data=ts,
+        sigma=1.5
     )
     opt = Optimizer(objective)
-    x0 = array([200, 100, .01, 5])  # Initial guess
-    iterates = opt.solve_newton(x0)
-    xstar = opt.solution
-    print("Completed {:} iterations".format(len(iterates)))
-    print(
-        "Optimal Point: ({:}, {:}, {:})".format(
-            xstar[0],
-            xstar[1],
-            xstar[2],
-            xstar[3]
-        )
-    )
-
-
-
-
-
-
-
-
-
-
-
-
+    opt.solve_newton(x0=[400, -100, 2.5*10**-3])
+    opt.report_results()
