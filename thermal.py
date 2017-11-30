@@ -1,15 +1,12 @@
-# THE NUMPY IMPORTS ARE RIGHT HERE!
 import matplotlib.pyplot as plt
-# PICTURE-MAKERS
 from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
     exp, log, sum, ndarray,
-    pi, matrix, zeros, squeeze
+    pi, matrix, zeros, float128
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
-# RANDOMIZING FUNCTIONS FROM NUMPY.RANDOM
 from numpy.random import seed as set_random_seed
 from util import add_noise, column_bind, ncol, nrow
 
@@ -22,6 +19,9 @@ include equilibrium temperature (T-infinity) and a rate constant
 Test1: Given some simulated data, can I estimate the parameters 
 that I think are estimable?
 """
+
+
+DT = float128
 
 
 def temperature(t, a, b, c):
@@ -165,8 +165,7 @@ class Objective(object):
 
     @sigma.setter
     def sigma(self, value):
-        assert isinstance(value, float)
-        self._sigma = abs(value)
+        self._sigma = abs(float(value))
 
     def value(self, x):
         """
@@ -294,7 +293,8 @@ class Simulation(object):
         _times = linspace(
             start=0,
             stop=t_total,
-            num=n_pt
+            num=n_pt,
+            dtype=DT
         )
         return _times
 
@@ -355,7 +355,7 @@ class Simulation(object):
                   "number. This is absolute temperature"
             raise ValueError(msg)
         else:
-            self._t_init = float(value)
+            self._t_init = value
 
     @property
     def t_hot(self):
@@ -406,11 +406,13 @@ class Optimizer(object):
         """
         assert isinstance(objective, Objective)
         self.objective = objective
-        self._iterates = []
+        self._iterates = []  # for storing the point at each iteration
+        self._iter_values = []  # for storing the function values
+        self._iter_gradnorm = []  # for storing the norm of the gradient
         self.optimal_point = None
         self.optimal_value = None
 
-    def solve_newton(self, x0, t=1., tol=.000001):
+    def solve_newton(self, x0, t=1., tol=.0001):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -423,7 +425,7 @@ class Optimizer(object):
             to the time dependent model
         """
         d = self.objective.gradient(x0)  # the gradient at the initial point
-        x = array(x0, copy=True)
+        x = array(x0, copy=True, dtype=DT)
         self.store_iteration(x)
         k = 0
         max_iter = 2000
@@ -446,12 +448,20 @@ class Optimizer(object):
         :param x: the current point in the optimization
         :return: None
         """
-        self._iterates.append(
-            {
-                'point': array(x, copy=True),
-                'value': self.objective.value(x)
-            }
+        self._iterates.append(array(x, copy=True))
+        self._iter_values.append(self.objective.value(x))
+        self._iter_gradnorm.append(norm(self.objective.gradient(x)))
+
+    def plot_convergence(self):
+        values = array(self._iter_gradnorm)
+        scatter(
+            x=range(len(values)),
+            y=values
         )
+        plt.title("Convergence Plot")
+        plt.xlabel("Iteration Number")
+        plt.ylabel("Norm of Gradient")
+        plt.show()
 
     @property
     def iterations(self):
@@ -488,3 +498,4 @@ if __name__ == "__main__":
     opt = Optimizer(objective)
     opt.solve_newton(x0=[500, -200, .003])
     opt.report_results()
+    opt.plot_convergence()
