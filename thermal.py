@@ -3,7 +3,8 @@ from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
     exp, log, sum, ndarray,
-    pi, matrix, zeros, float128
+    pi, matrix, zeros,
+    float128, inf
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -134,7 +135,7 @@ def hessian(time_series, a, b, c, t, sigma):
 
 
 class Objective(object):
-    def __init__(self, func, grad_f, hess_f, observed_data, sigma, t):
+    def __init__(self, func, grad_f, hess_f, observed_data, sigma, t=inf):
 
         """
         A class to represent the objective function
@@ -488,13 +489,18 @@ if __name__ == "__main__":
     s = Simulation(
         t_init=50,
         t_hot=300,
-        rate_const=3.5*10**-3,
+        rate_const=.0035,
         sigma=1.5
     )
     for randomseed in range(20):
+
+        sample_period = 7
+        samples = 40
+        seconds = sample_period * samples
+
         ts = s.simulate(
-            t_total=30*60,
-            n_pt=50,
+            t_total=seconds,
+            n_pt=samples,
             random_seed=randomseed
         )
         objective = Objective(
@@ -503,9 +509,9 @@ if __name__ == "__main__":
             hess_f=hessian,
             observed_data=ts,
             sigma=1.5,
-            t=100
+            t=1000
         )
         opt = Optimizer(objective)
-        opt.solve_newton(x0=[700, -450, .0039], max_iter=50)
+        opt.solve_newton(x0=[1000, -200, .003], max_iter=50)
         opt.report_results()
     # opt.plot_convergence()
