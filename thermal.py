@@ -84,14 +84,13 @@ def grad(time_series, a, b, c, t, sigma):
 
     g = matrix(zeros((3, 1)))
 
-    g[0, 0] = sum(errors)
-    g[1, 0] = sum(errors * u)
-    g[2, 0] = sum(errors * v) - (c * t) ** -1
+    g[0, 0] = sum(errors) / sig_sq
+    g[1, 0] = sum(errors * u) / sig_sq
+    g[2, 0] = sum(errors * v) / sig_sq - (c * t) ** -1
 
     # This extra term (c*t)**-1 in the partial derivative wrt c
     # comes from the log barrier function to keep c positive.
-
-    g /= sig_sq
+    # Note that I have failed to include this term in the 2nd derivatives below.
 
     return g
 
@@ -118,15 +117,13 @@ def hessian(time_series, a, b, c, t, sigma):
 
     h = matrix(zeros((3, 3)))
 
-    h[0, 0] = n
-    h[1, 1] = sum(u ** 2)
-    h[2, 2] = sum(v ** 2 + errors * times ** 2 * b * u)
+    h[0, 0] = n / sig_sq
+    h[1, 1] = sum(u ** 2) / sig_sq
+    h[2, 2] = sum(v ** 2 + errors * times ** 2 * b * u) / sig_sq
 
-    h[0, 1] = h[1, 0] = sum(u)
-    h[0, 2] = h[2, 0] = sum(v)
-    h[1, 2] = h[2, 1] = sum(u * (v - errors * times))
-
-    h /= sig_sq
+    h[0, 1] = h[1, 0] = sum(u) / sig_sq
+    h[0, 2] = h[2, 0] = sum(v) / sig_sq
+    h[1, 2] = h[2, 1] = sum(u * (v - errors * times)) / sig_sq
 
     return h
 
@@ -136,14 +133,15 @@ class Objective(object):
 
         """
         A class to represent the objective function
-        the function and its derivatives must take a TimeSeries object
-        as its first argument
+        the function and its derivatives must take a
+        TimeSeries object as their first argument.
         :param func: the function itself
         :param grad_f: the gradient vector of the objective (a vector valued function)
         :param hess_f: the hessian matrix of the objective (a matrix valued function)
         :param observed_data: TimeSeries object
         :param sigma: the noise parameter for the function (assumed to be known)
-        :param t: divisor of the log barrier function. Increase this to steepen the penalty for violating a constraint
+        :param t: divisor of the log barrier function. Increase this to
+            steepen the penalty for violating a constraint
         """
         self._objective = func
         self._grad = grad_f
@@ -153,6 +151,53 @@ class Objective(object):
         self._sigma = None
         self.observed_data = observed_data
         self.sigma = sigma
+
+    def value(self, x):
+        """
+        Return the function value at a given point
+        :param x: the point at which the function will be evaluated
+        :return: float
+        """
+        f = self._objective(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            sigma=self.sigma
+        )
+        return f
+
+    def gradient(self, x):
+        """
+        Compute the gradient of the objective at the point x
+        :param x: the point at which the gradient vector will be evaluated.
+        :return: numpy.ndarray; shape=(3,1)
+        """
+        g = self._grad(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            t=self._t,
+            sigma=self.sigma
+        )
+        return g
+
+    def hessian(self, x):
+        """
+        Compute the matrix of 2nd partial derivatives at x
+        :param x: the point at which the Hessian matrix will be computed
+        :return: numpy.ndarray; shape=(3,1)
+        """
+        h = self._hess(
+            time_series=self.observed_data,
+            a=x[0],
+            b=x[1],
+            c=x[2],
+            t=self._t,
+            sigma=self.sigma
+        )
+        return h
 
     @property
     def observed_data(self):
@@ -171,41 +216,6 @@ class Objective(object):
     def sigma(self, value):
         self._sigma = abs(float(value))
 
-    def value(self, x):
-        """
-        Return the function value at a given point
-        dimension of x must be compatible with the positional arguments in self.objective
-        :param x: the point at which the function will be evaluated
-        :return: float
-        """
-        return self._objective(
-            time_series=self.observed_data,
-            a=x[0],
-            b=x[1],
-            c=x[2],
-            sigma=self.sigma
-        )
-
-    def gradient(self, x):
-        return self._grad(
-            time_series=self.observed_data,
-            a=x[0],
-            b=x[1],
-            c=x[2],
-            t=self._t,
-            sigma=self.sigma
-        )
-
-    def hessian(self, x):
-        return self._hess(
-            time_series=self.observed_data,
-            a=x[0],
-            b=x[1],
-            c=x[2],
-            t=self._t,
-            sigma=self.sigma
-        )
-
 
 class TimeSeries(object):
     def __init__(self):
@@ -215,6 +225,11 @@ class TimeSeries(object):
         self._array = None
 
     def plot(self, add_labels=False):
+        """
+        Plot the time series
+        :param add_labels: If True, axis labels and a title will be added.
+        :return: None
+        """
         scatter(
             x=self.times,
             y=self.temperatures,
@@ -226,12 +241,20 @@ class TimeSeries(object):
 
     @staticmethod
     def set_plot_labels():
+        """
+        Add labels to the current figure
+        :return: None
+        """
         plt.xlabel("Time (s)")
         plt.ylabel("Temperature (F)")
         plt.title('Temperature Time Series')
 
     @property
     def n(self):
+        """
+        Return the number of time points in the time series
+        :return: int
+        """
         return nrow(self._array)
 
     @classmethod
@@ -450,7 +473,7 @@ class Optimizer(object):
 
     def store_iteration(self, x):
         """
-        Store an iteration (point and function value)
+        Store an iteration (point, function value, norm of gradient)
         :param x: the current point in the optimization
         :return: None
         """
@@ -491,15 +514,17 @@ class Optimizer(object):
 
 
 if __name__ == "__main__":
+    sigma = 1.8
+
     s = Simulation(
         t_init=50,
         t_hot=300,
         rate_const=.0035,
-        sigma=1.5
+        sigma=sigma
     )
-    for randomseed in range(10):
+    for randomseed in range(20):
 
-        sample_period = 8
+        sample_period = 6
         samples = 50
         seconds = sample_period * samples
 
@@ -513,9 +538,9 @@ if __name__ == "__main__":
             grad_f=grad,
             hess_f=hessian,
             observed_data=ts,
-            sigma=1.5,
-            t=1000
+            sigma=sigma,
+            t=2000
         )
         opt = Optimizer(objective)
-        opt.solve_newton(x0=[1000, -800, .00001], max_iter=1000, t=.25)
+        opt.solve_newton(x0=[1000, -800, .0001], max_iter=200, t=.5)
         opt.report_results()
