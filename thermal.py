@@ -208,14 +208,7 @@ class Simulation(object):
                 t_total=t_total, n_pt=n_pt,
                 random_seed=random_seed
             )
-        scatter(
-            x=time_series.times,
-            y=time_series.temperatures,
-            alpha=.8
-        )
-        plt.xlabel("Time (s)")
-        plt.ylabel("Temperature (F)")
-        plt.title('Temperature Time Series')
+        time_series.plot(add_labels=True)
         plt.show()
 
     @property
@@ -280,9 +273,9 @@ class Optimizer(object):
         """
         assert isinstance(objective, Objective)
         self.objective = objective
-        self._iterates = []  # for storing the point at each iteration
-        self._iter_values = []  # for storing the function values
-        self._iter_gradnorm = []  # for storing the norm of the gradient
+        self.iterates = []  # for storing the point at each iteration
+        self.iter_values = []  # for storing the function values
+        self.iter_gradnorm = []  # for storing the norm of the gradient
         self.optimal_point = None
         self.optimal_value = None
 
@@ -322,16 +315,16 @@ class Optimizer(object):
         :param x: the current point in the optimization
         :return: None
         """
-        self._iterates.append(array(x, copy=True))
-        self._iter_values.append(self.objective.value(x))
-        self._iter_gradnorm.append(norm(self.objective.gradient(x)))
+        self.iterates.append(array(x, copy=True))
+        self.iter_values.append(self.objective.value(x))
+        self.iter_gradnorm.append(norm(self.objective.gradient(x)))
 
     def plot_convergence(self):
         """
         Plot the norm of the gradient as a function of step number
         :return: None
         """
-        values = array(self._iter_gradnorm)
+        values = array(self.iter_gradnorm)
         scatter(
             x=range(len(values)),
             y=values
@@ -347,29 +340,48 @@ class Optimizer(object):
         number of iterations that the optimization performed
         :return: int
         """
-        return len(self._iterates) - 1
+        return len(self.iterates) - 1
 
     def report_results(self):
         """
         Print the results of the optimization
         :return: None
         """
-        print("Completed {:} iterations".format(self.iterations))
+        print("Completed {:} optimization iterations".format(self.iterations))
         print("Optimal Point: ({:})".format(self.optimal_point))
 
 
+class Plotter(object):
+    def __init__(self, optimizer):
+        assert isinstance(optimizer, Optimizer)
+        self._optimizer = optimizer
+
+    def plot_time_series(self):
+        """
+        Plot the observed time series along with the time series model
+            at each step of the likelihood maximization
+        :return: None
+        """
+        self._optimizer.objective.observed_data.plot(add_labels=True)
+        for point in self._optimizer.iterates:
+            # plot the temperature function using 'point' as the parameter vector
+            # determine the range and spacing of t
+            # plot temperature(t, a, b, c)
+            pass
+
+
 if __name__ == "__main__":
-    sigma = 1.8
+    sigma = 4
 
     s = Simulation(
-        t_init=50,
-        t_hot=300,
+        t_init=60,
+        t_hot=415,
         rate_const=.0035,
         sigma=sigma
     )
     for randomseed in range(20):
 
-        sample_period = 6
+        sample_period = 15
         samples = 50
         seconds = sample_period * samples
 
@@ -378,6 +390,7 @@ if __name__ == "__main__":
             n_pt=samples,
             random_seed=randomseed
         )
+        ts.plot(add_labels=True)
         objective = Objective(
             func=nloglik,
             grad_f=grad,
@@ -387,5 +400,5 @@ if __name__ == "__main__":
             t=2000
         )
         opt = Optimizer(objective)
-        opt.solve_newton(x0=[1000, -800, .0001], max_iter=200, t=.5)
+        opt.solve_newton(x0=[1000, -200, .0001], max_iter=200, t=.5)
         opt.report_results()
