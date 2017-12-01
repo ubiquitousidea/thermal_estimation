@@ -3,9 +3,9 @@ from matplotlib.pyplot import scatter
 from numpy import (
     linspace, array,
     exp, log, sum, ndarray,
-    pi, matrix, zeros,
-    float128, inf
+    pi, matrix, zeros, inf
 )
+from numpy import float128 as dt
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 from numpy.random import seed as set_random_seed
@@ -20,9 +20,6 @@ include equilibrium temperature (T-infinity) and a rate constant
 Test1: Given some simulated data, can I estimate the parameters 
 that I think are estimable?
 """
-
-
-DT = float128
 
 
 def temperature(t, a, b, c):
@@ -303,7 +300,7 @@ class Simulation(object):
             start=0,
             stop=t_total,
             num=n_pt,
-            dtype=DT
+            dtype=dt
         )
         return _times
 
@@ -428,14 +425,14 @@ class Optimizer(object):
             argument to the model is time while the remaining args
             are parameters
         :param x0: a starting point for the optimization
-        :param t: newton step size parameter
+        :param t: newton step size multiplier
         :param tol: stopping criterion; tolerance on the norm of the gradient
         :param max_iter: maximum number of iterations to perform
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
         d = self.objective.gradient(x0)  # the gradient at the initial point
-        x = array(x0, copy=True, dtype=DT)
+        x = array(x0, copy=True, dtype=dt)
         self.store_iteration(x)
         k = 0
         while norm(d) > tol:
@@ -462,6 +459,10 @@ class Optimizer(object):
         self._iter_gradnorm.append(norm(self.objective.gradient(x)))
 
     def plot_convergence(self):
+        """
+        Plot the norm of the gradient as a function of step number
+        :return: None
+        """
         values = array(self._iter_gradnorm)
         scatter(
             x=range(len(values)),
@@ -481,6 +482,10 @@ class Optimizer(object):
         return len(self._iterates) - 1
 
     def report_results(self):
+        """
+        Print the results of the optimization
+        :return: None
+        """
         print("Completed {:} iterations".format(self.iterations))
         print("Optimal Point: ({:})".format(self.optimal_point))
 
@@ -492,10 +497,10 @@ if __name__ == "__main__":
         rate_const=.0035,
         sigma=1.5
     )
-    for randomseed in range(20):
+    for randomseed in range(10):
 
-        sample_period = 7
-        samples = 40
+        sample_period = 8
+        samples = 50
         seconds = sample_period * samples
 
         ts = s.simulate(
@@ -512,6 +517,5 @@ if __name__ == "__main__":
             t=1000
         )
         opt = Optimizer(objective)
-        opt.solve_newton(x0=[1000, -200, .003], max_iter=50)
+        opt.solve_newton(x0=[1000, -800, .00001], max_iter=1000, t=.25)
         opt.report_results()
-    # opt.plot_convergence()
