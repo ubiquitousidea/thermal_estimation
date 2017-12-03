@@ -1,9 +1,11 @@
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import scatter
+from matplotlib.pyplot import get_cmap
 from numpy import float128 as dt
 from numpy import (
     linspace, array,
-    exp, log, sum, pi, matrix, zeros
+    exp, log, sum, pi,
+    matrix, zeros, arange
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -266,7 +268,7 @@ class Simulation(object):
         return self._noise_variance
 
 
-class Optimizer(object):
+class Optimization(object):
     def __init__(self, objective):
         """
         :param objective: the function whose value is to be minimized by adjusting parameters
@@ -351,54 +353,79 @@ class Optimizer(object):
         print("Optimal Point: ({:})".format(self.optimal_point))
 
 
-class Plotter(object):
-    def __init__(self, optimizer):
-        assert isinstance(optimizer, Optimizer)
-        self._optimizer = optimizer
+class McPlotter(object):
+    def __init__(self, optimization):
+        assert isinstance(optimization, Optimization)
+        self._opt = optimization
 
-    def plot_time_series(self):
+    def plot_time_series_convergence(self):
         """
         Plot the observed time series along with the time series model
             at each step of the likelihood maximization
         :return: None
         """
-        self._optimizer.objective.observed_data.plot(add_labels=True)
-        for point in self._optimizer.iterates:
-            # plot the temperature function using 'point' as the parameter vector
-            # determine the range and spacing of t
-            # plot temperature(t, a, b, c)
-            pass
+        times = self.get_times()
+        for params, color in ColorPicker(self._opt.iterates):
+            temps = temperature(times, *params)
+            TimeSeries.from_time_temp(times, temps).plot(
+                _type="line",
+                color=color
+            )
+        self.plot_observed()
+        plt.show()
+
+    def get_times(self, n=100):
+        _start, _stop = self._opt.objective.observed_data.range
+        return linspace(_start, _stop, n)
+
+    def plot_observed(self):
+        self._opt.objective.observed_data.plot(add_labels=True)
+
+
+class ColorPicker(object):
+    def __init__(self, iterates, cmap_name=None):
+        self.iterates = iterates
+        self.cmap = get_cmap(cmap_name)
+
+    @property
+    def n(self):
+        return self.iterates.__len__()
+
+    def __iter__(self):
+        for item, u in zip(self.iterates, linspace(0., 1., self.n)):
+            color = self.cmap(u)
+            yield item, color
 
 
 if __name__ == "__main__":
-    sigma = 4
-
+    sigma = 6
     s = Simulation(
         t_init=60,
         t_hot=415,
         rate_const=.0035,
         sigma=sigma
     )
-    for randomseed in range(20):
+    sample_period = 30
+    samples = 50
+    seconds = sample_period * samples
+    for randomseed in range(10):
 
-        sample_period = 15
-        samples = 50
-        seconds = sample_period * samples
-
-        ts = s.simulate(
+        time_series = s.simulate(
             t_total=seconds,
             n_pt=samples,
             random_seed=randomseed
         )
-        ts.plot(add_labels=True)
+
         objective = Objective(
             func=nloglik,
             grad_f=grad,
             hess_f=hessian,
-            observed_data=ts,
+            observed_data=time_series,
             sigma=sigma,
-            t=2000
+            barrier_t=2000
         )
-        opt = Optimizer(objective)
-        opt.solve_newton(x0=[1000, -200, .0001], max_iter=200, t=.5)
+
+        opt = Optimization(objective)
+        opt.solve_newton(x0=[1000, -200, .0001], max_iter=50, t=.5)
         opt.report_results()
+        McPlotter(opt).plot_time_series_convergence()

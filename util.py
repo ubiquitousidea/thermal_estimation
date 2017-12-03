@@ -55,9 +55,14 @@ def nrow(arr):
     assert len(arr.shape) == 2
     return arr.shape[0]
 
+#
+# class Constraint(object):
+#     def __init__(self, typ="=", ):
+#
 
 class Objective(object):
-    def __init__(self, func, grad_f, hess_f, observed_data, sigma, t=inf):
+    def __init__(self, func, grad_f, hess_f, observed_data,
+                 sigma, barrier_t=inf):
 
         """
         A class to represent the objective function
@@ -68,13 +73,13 @@ class Objective(object):
         :param hess_f: the hessian matrix of the objective (a matrix valued function)
         :param observed_data: TimeSeries object
         :param sigma: the noise parameter for the function (assumed to be known)
-        :param t: divisor of the log barrier function. Increase this to
+        :param barrier_t: divisor of the log barrier function. Increase this to
             steepen the penalty for violating a constraint
         """
         self._objective = func
         self._grad = grad_f
         self._hess = hess_f
-        self._t = t
+        self._t = barrier_t
         self._observed_data = None
         self._sigma = None
         self.observed_data = observed_data
@@ -152,20 +157,33 @@ class TimeSeries(object):
         """
         self._array = None
 
-    def plot(self, add_labels=False):
+    def plot(self, add_labels=False, _type="scatter", color=None):
         """
         Plot the time series
         :param add_labels: If True, axis labels and a title will be added.
         :return: None
         """
-        scatter(
-            x=self.times,
-            y=self.temperatures,
-            alpha=.8
-        )
+        _type = _type.lower()
+        assert _type in ("scatter", "line")
+        if _type == "scatter":
+            scatter(
+                self.times,
+                self.temperatures,
+            )
+        elif _type == "line":
+            plt.plot(self.times,
+                     self.temperatures,
+                     "-", color=color)
         if add_labels:
             self.set_plot_labels()
-        plt.show()
+
+    @property
+    def range(self):
+        """
+        Return the range of times represented by this timeseries
+        :return: tuple of floats
+        """
+        return self.times[0], self.times[-1]
 
     @staticmethod
     def set_plot_labels():
