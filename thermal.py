@@ -11,7 +11,7 @@ from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 from numpy.random import seed as set_random_seed
 
-from util import add_noise, Objective, TimeSeries
+from util import add_noise, Objective, TimeSeries, nrow, ncol
 
 """
 Want to estimate the parameters of a heating model given a
@@ -362,10 +362,11 @@ class McPlotter(object):
         assert isinstance(optimization, Optimization)
         self.optimization = optimization
 
-    def plot_time_series_convergence(self):
+    def plot_time_series_convergence(self, file_name=None):
         """
         Plot the observed time series along with the time series model
             at each step of the likelihood maximization
+        :param file_name: file name of image to write
         :return: None
         """
         times = self.get_times()
@@ -376,15 +377,31 @@ class McPlotter(object):
                 color=color
             )
         self.plot_observed()
-        plt.show()
+        self.make_plot(file_name)
 
-    def plot_parameter_convergence(self):
+    def plot_parameter_convergence(self, file_name=None):
         points = self.optimization.as_array
+        n = nrow(points)
         scatter(
             points[:, 0],
-            points[:, 2]
+            log(points[:, 2]),
+            c=arange(n),
+            cmap='viridis',
+            edgecolors="black"
         )
-        plt.show()
+        plt.colorbar()
+        plt.xlabel('a')
+        plt.ylabel('log(c)')
+        plt.title('Parameter Convergence')
+        self.make_plot(file_name)
+
+    @staticmethod
+    def make_plot(file_name):
+        if file_name is None:
+            plt.show()
+        else:
+            plt.savefig(file_name)
+            plt.close()
 
     def get_times(self, n=100):
         _start, _stop = self.optimization.objective.observed_data.range
@@ -407,6 +424,12 @@ class ColorPicker(object):
         for item, u in zip(self.iterates, linspace(0., 1., self.n)):
             color = self.cmap(u)
             yield item, color
+
+
+def get_param_string(randomseed, point, t):
+    return 'random_seed_{:}_a0_{:}_b0_{:}_c0_{:}_t={:}'.format(
+        randomseed, point[0], point[1], point[2], t
+    )
 
 
 if __name__ == "__main__":
@@ -438,8 +461,13 @@ if __name__ == "__main__":
         )
 
         opt = Optimization(objective)
-        opt.solve_newton(x0=[1000, -200, .0001], max_iter=50, t=.5)
+        t = .5
+        x0 = [1000, -200, .001]
+        opt.solve_newton(x0=x0, max_iter=100, t=t)
         opt.report_results()
         mcplot = McPlotter(opt)
-        mcplot.plot_time_series_convergence()
-        mcplot.plot_parameter_convergence()
+        param_string = get_param_string(randomseed, x0, t)
+        fn1 = "time_series_convergence_plot_{:}.png".format(param_string)
+        mcplot.plot_time_series_convergence(file_name=fn1)
+        fn2 = "parameter_convergence_plot_{:}.png".format(param_string)
+        mcplot.plot_parameter_convergence(file_name=fn2)
