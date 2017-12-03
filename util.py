@@ -161,6 +161,8 @@ class TimeSeries(object):
         """
         Plot the time series
         :param add_labels: If True, axis labels and a title will be added.
+        :param _type: plot type; one of (scatter, line)
+        :param color: the color for the plotted points/lines (optional)
         :return: None
         """
         _type = _type.lower()

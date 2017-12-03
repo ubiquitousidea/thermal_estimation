@@ -344,6 +344,10 @@ class Optimization(object):
         """
         return len(self.iterates) - 1
 
+    @property
+    def as_array(self):
+        return array(self.iterates)
+
     def report_results(self):
         """
         Print the results of the optimization
@@ -356,7 +360,7 @@ class Optimization(object):
 class McPlotter(object):
     def __init__(self, optimization):
         assert isinstance(optimization, Optimization)
-        self._opt = optimization
+        self.optimization = optimization
 
     def plot_time_series_convergence(self):
         """
@@ -365,7 +369,7 @@ class McPlotter(object):
         :return: None
         """
         times = self.get_times()
-        for params, color in ColorPicker(self._opt.iterates):
+        for params, color in ColorPicker(self.optimization.iterates):
             temps = temperature(times, *params)
             TimeSeries.from_time_temp(times, temps).plot(
                 _type="line",
@@ -374,12 +378,20 @@ class McPlotter(object):
         self.plot_observed()
         plt.show()
 
+    def plot_parameter_convergence(self):
+        points = self.optimization.as_array
+        scatter(
+            points[:, 0],
+            points[:, 2]
+        )
+        plt.show()
+
     def get_times(self, n=100):
-        _start, _stop = self._opt.objective.observed_data.range
+        _start, _stop = self.optimization.objective.observed_data.range
         return linspace(_start, _stop, n)
 
     def plot_observed(self):
-        self._opt.objective.observed_data.plot(add_labels=True)
+        self.optimization.objective.observed_data.plot(add_labels=True)
 
 
 class ColorPicker(object):
@@ -408,7 +420,7 @@ if __name__ == "__main__":
     sample_period = 30
     samples = 50
     seconds = sample_period * samples
-    for randomseed in range(10):
+    for randomseed in range(3):
 
         time_series = s.simulate(
             t_total=seconds,
@@ -428,4 +440,6 @@ if __name__ == "__main__":
         opt = Optimization(objective)
         opt.solve_newton(x0=[1000, -200, .0001], max_iter=50, t=.5)
         opt.report_results()
-        McPlotter(opt).plot_time_series_convergence()
+        mcplot = McPlotter(opt)
+        mcplot.plot_time_series_convergence()
+        mcplot.plot_parameter_convergence()
