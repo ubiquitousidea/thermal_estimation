@@ -380,6 +380,11 @@ class McPlotter(object):
         self.make_plot(file_name)
 
     def plot_parameter_convergence(self, file_name=None):
+        """
+        Plot the parameter estimates at each iterate
+        :param file_name: str
+        :return: None
+        """
         points = self.optimization.as_array
         n = nrow(points)
         scatter(
