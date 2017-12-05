@@ -282,7 +282,7 @@ class Optimization(object):
         self.optimal_point = None
         self.optimal_value = None
 
-    def solve_newton(self, x0, t=1., tol=.000001, max_iter=100):
+    def solve_newton(self, x0, t=1., tol=.001, max_iter=500):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -295,14 +295,15 @@ class Optimization(object):
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
-        d = self.objective.gradient(x0)  # the gradient at the initial point
+        grad_norm = norm(self.objective.gradient(x0))
         x = array(x0, copy=True, dtype=dt)
         self.store_iteration(x)
         k = 0
-        while norm(d) > tol:
+        while grad_norm > tol:
             h = self.objective.hessian(x)
             hinv = inverse(h)
             g = self.objective.gradient(x)
+            grad_norm = norm(g)
             direction = array(matrix(hinv) * matrix(g)).squeeze()
             x -= t * direction
             self.store_iteration(x)
@@ -371,13 +372,16 @@ class McPlotter(object):
         :return: None
         """
         times = self.get_times()
+        k = 1
         for params, color in ColorPicker(self.optimization.iterates):
             temps = temperature(times, *params)
             TimeSeries.from_time_temp(times, temps).plot(
                 _type="line",
-                color=color
+                color=color,
+                layer=k
             )
-        self.plot_observed()
+            k += 1
+        self.plot_observed(layer=k)
         self.make_plot(file_name)
 
     def plot_parameter_convergence(self, file_name=None):
@@ -394,7 +398,8 @@ class McPlotter(object):
             c=arange(1, n+1),
             cmap='viridis',
             norm=colors.LogNorm(vmin=1, vmax=n),
-            edgecolors="black"
+            edgecolors="black",
+            alpha=1.0
         )
         plt.colorbar(label="Time Step")
         plt.xlabel('a')
@@ -414,8 +419,10 @@ class McPlotter(object):
         _start, _stop = self.optimization.objective.observed_data.range
         return linspace(_start, _stop, n)
 
-    def plot_observed(self):
-        self.optimization.objective.observed_data.plot(add_labels=True)
+    def plot_observed(self, layer=1):
+        self.optimization.objective.observed_data.plot(
+            add_labels=True, layer=layer
+        )
 
 
 class ColorPicker(object):
@@ -446,15 +453,15 @@ if __name__ == "__main__":
     x0 = [800, -200, .001]
 
     s = Simulation(
-        t_init=60,
-        t_hot=415,
-        rate_const=.0035,
+        t_init=100,
+        t_hot=500,
+        rate_const=.004,
         sigma=sigma
     )
-    sample_period = 30
-    samples = 50
+    sample_period = 20
+    samples = 65
     seconds = sample_period * samples
-    for randomseed in range(3):
+    for randomseed in range(8):
 
         time_series = s.simulate(
             t_total=seconds,
@@ -472,7 +479,7 @@ if __name__ == "__main__":
         )
 
         opt = Optimization(objective)
-        opt.solve_newton(x0=x0, max_iter=100, t=newton_t)
+        opt.solve_newton(x0=x0, t=newton_t)
         opt.report_results()
         mcplot = McPlotter(opt)
         param_string = get_param_string(x0, newton_t, barrier_t)

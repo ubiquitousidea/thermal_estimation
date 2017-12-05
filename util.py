@@ -179,12 +179,13 @@ class TimeSeries(object):
         """
         self._array = None
 
-    def plot(self, add_labels=False, _type="scatter", color=None):
+    def plot(self, add_labels=False, _type="scatter", color=None, layer=1, edgecolor='black'):
         """
         Plot the time series
         :param add_labels: If True, axis labels and a title will be added.
         :param _type: plot type; one of (scatter, line)
         :param color: the color for the plotted points/lines (optional)
+        :param layer: which layer to plot the objects (higher number displays on top)
         :return: None
         """
         _type = _type.lower()
@@ -193,11 +194,15 @@ class TimeSeries(object):
             scatter(
                 self.times,
                 self.temperatures,
+                alpha=1.0,
+                zorder=layer,
+                edgecolors=edgecolor
             )
         elif _type == "line":
             plt.plot(self.times,
                      self.temperatures,
-                     "-", color=color)
+                     "-", color=color,
+                     zorder=layer)
         if add_labels:
             self.set_plot_labels()
 
