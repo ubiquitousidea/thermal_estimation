@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import scatter
 from matplotlib.pyplot import get_cmap
+import matplotlib.colors as colors
 from numpy import float128 as dt
 from numpy import (
     linspace, array,
@@ -390,8 +391,9 @@ class McPlotter(object):
         scatter(
             points[:, 0],
             log(points[:, 2]),
-            c=arange(n),
+            c=arange(1, n+1),
             cmap='viridis',
+            norm=colors.LogNorm(vmin=1, vmax=n),
             edgecolors="black"
         )
         plt.colorbar(label="Time Step")
