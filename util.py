@@ -1,7 +1,9 @@
+import os
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import scatter
 from numpy import array, concatenate, ndarray, inf
 from numpy.random.mtrand import randn as noise
+from contextlib import contextmanager
 
 
 def add_noise(arr, sigma):
@@ -59,6 +61,26 @@ def nrow(arr):
 # class Constraint(object):
 #     def __init__(self, typ="=", ):
 #
+
+@contextmanager
+def cd(new_directory=None):
+    """
+    From Stack Exchange example
+    https://stackoverflow.com/questions/431684/how-do-i-cd-in-python
+    :param new_directory: Directory to change into
+    """
+    if new_directory is None:
+        new_directory = "."
+    previous_directory = os.getcwd()
+    if not os.path.isdir(new_directory):
+        os.mkdir(new_directory)
+    new_directory = os.path.expanduser(new_directory)
+    os.chdir(new_directory)
+    try:
+        yield
+    finally:
+        os.chdir(previous_directory)
+
 
 class Objective(object):
     def __init__(self, func, grad_f, hess_f, observed_data,

@@ -11,7 +11,7 @@ from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 from numpy.random import seed as set_random_seed
 
-from util import add_noise, Objective, TimeSeries, nrow, ncol
+from util import add_noise, Objective, TimeSeries, nrow, ncol, cd
 
 """
 Want to estimate the parameters of a heating model given a
@@ -394,7 +394,7 @@ class McPlotter(object):
             cmap='viridis',
             edgecolors="black"
         )
-        plt.colorbar()
+        plt.colorbar(label="Time Step")
         plt.xlabel('a')
         plt.ylabel('log(c)')
         plt.title('Parameter Convergence')
@@ -431,14 +431,18 @@ class ColorPicker(object):
             yield item, color
 
 
-def get_param_string(randomseed, point, t):
-    return 'random_seed_{:}_a0_{:}_b0_{:}_c0_{:}_t={:}'.format(
-        randomseed, point[0], point[1], point[2], t
+def get_param_string(point, newton_t, barrier_t):
+    return 'a{:}_b{:}_c{:}_newton_t{:}_barrier_t{:}'.format(
+        point[0], point[1], point[2], newton_t, barrier_t
     )
 
 
 if __name__ == "__main__":
     sigma = 6
+    barrier_t = 1000
+    newton_t = 0.25
+    x0 = [800, -200, .001]
+
     s = Simulation(
         t_init=60,
         t_hot=415,
@@ -462,17 +466,16 @@ if __name__ == "__main__":
             hess_f=hessian,
             observed_data=time_series,
             sigma=sigma,
-            barrier_t=2000
+            barrier_t=barrier_t
         )
 
         opt = Optimization(objective)
-        t = .5
-        x0 = [1000, -200, .001]
-        opt.solve_newton(x0=x0, max_iter=100, t=t)
+        opt.solve_newton(x0=x0, max_iter=100, t=newton_t)
         opt.report_results()
         mcplot = McPlotter(opt)
-        param_string = get_param_string(randomseed, x0, t)
-        fn1 = "time_series_convergence_plot_{:}.png".format(param_string)
-        mcplot.plot_time_series_convergence(file_name=fn1)
-        fn2 = "parameter_convergence_plot_{:}.png".format(param_string)
-        mcplot.plot_parameter_convergence(file_name=fn2)
+        param_string = get_param_string(x0, newton_t, barrier_t)
+        with cd(param_string):
+            fn1 = "time_series_convergence_plot_s{:}.png".format(randomseed)
+            mcplot.plot_time_series_convergence(file_name=fn1)
+            fn2 = "parameter_convergence_plot_s{:}.png".format(randomseed)
+            mcplot.plot_parameter_convergence(file_name=fn2)
