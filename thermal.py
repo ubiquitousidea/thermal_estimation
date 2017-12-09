@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import scatter
-from matplotlib.pyplot import get_cmap
+from matplotlib.pyplot import get_cmap, Normalize
 import matplotlib.colors as colors
 from numpy import float128 as dt
 from numpy import (
@@ -12,7 +12,10 @@ from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 from numpy.random import seed as set_random_seed
 
-from util import add_noise, Objective, TimeSeries, nrow, ncol, cd
+from util import (
+    add_noise, Objective,
+    TimeSeries, nrow, cd
+)
 
 """
 Want to estimate the parameters of a heating model given a
@@ -360,9 +363,24 @@ class Optimization(object):
 
 
 class McPlotter(object):
-    def __init__(self, optimization):
+    def __init__(self, optimization, output_dir="plots"):
+        """
+        A class to plot the results of an optimization
+        :param optimization: the optimization object
+        """
         assert isinstance(optimization, Optimization)
+        self.output_dir = output_dir
         self.optimization = optimization
+
+    def summarize(self):
+
+        with cd(self.output_dir):
+            with cd("times_series_convergence"):
+                fn1 = "timeseries_" + self.optimization.parameter_string + ".png"
+                self.plot_time_series_convergence(file_name=fn1)
+            with cd("parameter_convergence"):
+                fn2 = ""
+                self.plot_parameter_convergence(file_name=fn2)
 
     def plot_time_series_convergence(self, file_name=None):
         """
@@ -396,7 +414,7 @@ class McPlotter(object):
             points[:, 0],
             log(points[:, 2]),
             c=arange(1, n+1),
-            cmap='viridis',
+            cmap='gist_rainbow',
             norm=colors.LogNorm(vmin=1, vmax=n),
             edgecolors="black",
             alpha=1.0
@@ -427,8 +445,15 @@ class McPlotter(object):
 
 class ColorPicker(object):
     def __init__(self, iterates, cmap_name=None):
+        """
+        Iterate over objects
+        returns tuple of object and color
+        :param iterates: some iterable
+        :param cmap_name: name of the color map
+        """
         self.iterates = iterates
         self.cmap = get_cmap(cmap_name)
+        self.norm = Normalize()
 
     @property
     def n(self):
@@ -440,51 +465,57 @@ class ColorPicker(object):
             yield item, color
 
 
-def get_param_string(point, newton_t, barrier_t):
-    return 'a{:}_b{:}_c{:}_newton_t{:}_barrier_t{:}'.format(
-        point[0], point[1], point[2], newton_t, barrier_t
-    )
-
-
 if __name__ == "__main__":
+    rs = 100  # random seed
     sigma = 6
     barrier_t = 1000
     newton_t = 0.25
-    x0 = [800, -200, .001]
-
-    s = Simulation(
-        t_init=100,
-        t_hot=500,
-        rate_const=.004,
-        sigma=sigma
-    )
-    sample_period = 20
+    x0 = [800, -200, .001]  # Initial guess for optimization
+    xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
+    sample_period = 20  # seconds
     samples = 65
     seconds = sample_period * samples
-    for randomseed in range(8):
 
-        time_series = s.simulate(
-            t_total=seconds,
-            n_pt=samples,
-            random_seed=randomseed
-        )
+    s = Simulation(
+        t_init=xt[0] + xt[1],
+        t_hot=xt[0],
+        rate_const=xt[2],
+        sigma=sigma
+    )
 
-        objective = Objective(
-            func=nloglik,
-            grad_f=grad,
-            hess_f=hessian,
-            observed_data=time_series,
-            sigma=sigma,
-            barrier_t=barrier_t
-        )
+    time_series = s.simulate(
+        t_total=seconds,
+        n_pt=samples,
+        random_seed=rs
+    )
 
-        opt = Optimization(objective)
-        opt.solve_newton(x0=x0, t=newton_t)
-        opt.report_results()
-        mcplot = McPlotter(opt)
-        param_string = get_param_string(x0, newton_t, barrier_t)
-        with cd(param_string):
-            fn1 = "time_series_convergence_plot_s{:}.png".format(randomseed)
-            mcplot.plot_time_series_convergence(file_name=fn1)
-            fn2 = "parameter_convergence_plot_s{:}.png".format(randomseed)
-            mcplot.plot_parameter_convergence(file_name=fn2)
+    objective = Objective(
+        func=nloglik,
+        grad_f=grad,
+        hess_f=hessian,
+        observed_data=time_series,
+        sigma=sigma,
+        barrier_t=barrier_t
+    )
+
+    opt = Optimization(objective)
+    opt.solve_newton(x0=x0, t=newton_t)
+    opt.report_results()
+    mcplot = McPlotter(opt)
+    mcplot.summarize()
+
+
+def stringify(sort_keys=True, **kwargs):
+    """
+    Convert a namespace into a nice readable string
+    :param sort_keys
+    :param kwargs: arbitrary keyword arguments
+    :return: string representation of the names:values
+    """
+    return "_".join(
+        [
+            "{}{}".format(k, v)
+            for k, v
+            in kwargs.items()
+        ]
+    )

@@ -57,10 +57,6 @@ def nrow(arr):
     assert len(arr.shape) == 2
     return arr.shape[0]
 
-#
-# class Constraint(object):
-#     def __init__(self, typ="=", ):
-#
 
 @contextmanager
 def cd(new_directory=None):
@@ -194,7 +190,7 @@ class TimeSeries(object):
             scatter(
                 self.times,
                 self.temperatures,
-                alpha=1.0,
+                alpha=.8,
                 zorder=layer,
                 edgecolors=edgecolor
             )
