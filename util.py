@@ -1,7 +1,8 @@
 import os
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import scatter
-from numpy import array, concatenate, ndarray, inf
+from numpy import array, concatenate, ndarray, inf, zeros, nan
+from numpy.linalg import svd
 from numpy.random.mtrand import randn as noise
 from contextlib import contextmanager
 
@@ -150,6 +151,19 @@ class Objective(object):
         )
         return h
 
+    def hessian_cn(self, x):
+        """
+        Condition number of the hessian matrix
+        :return: float (NaN if hessian is not invertible)
+        """
+        h = self.hessian(x)
+        u, s, vt = svd(h)
+        s = relu(s)
+        if s.min() > 0:
+            return s.max() / s.min()
+        else:
+            return nan
+
     @property
     def observed_data(self):
         return self._observed_data
@@ -252,3 +266,27 @@ class TimeSeries(object):
     @property
     def temperatures(self):
         return self._array[:, 1]
+
+
+def stringify(**kwargs):
+    """
+    Convert a namespace into a nice readable string
+    :param kwargs: arbitrary keyword arguments
+    :return: string representation of the names:values
+    """
+    return "_".join(
+        [
+            "{}-{}".format(k, kwargs[k])
+            for k
+            in sorted(kwargs.keys())
+        ]
+    )
+
+
+def relu(arr):
+    """
+    return the max of {0, xi} for each i in range of array
+    :param arr: numpy.ndarray
+    :return: numpy.ndarray with all non-negative entries
+    """
+    return column_bind(zeros(len(arr)), arr).max(axis=1)

@@ -1,7 +1,7 @@
-import matplotlib.pyplot as plt
-from matplotlib.pyplot import scatter
-from matplotlib.pyplot import get_cmap, Normalize
 import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import get_cmap, Normalize
+from matplotlib.pyplot import scatter
 from numpy import float128 as dt
 from numpy import (
     linspace, array,
@@ -14,8 +14,8 @@ from numpy.random import seed as set_random_seed
 
 from util import (
     add_noise, Objective,
-    TimeSeries, nrow, cd
-)
+    TimeSeries, nrow, cd,
+    stringify)
 
 """
 Want to estimate the parameters of a heating model given a
@@ -282,8 +282,16 @@ class Optimization(object):
         self.iterates = []  # for storing the point at each iteration
         self.iter_values = []  # for storing the function values
         self.iter_gradnorm = []  # for storing the norm of the gradient
+        self.iter_hesscond = []  # for the condition number of the hessian matrix at each step
         self.optimal_point = None
         self.optimal_value = None
+        # The variables that change at each iteration
+        # keys are names of properties of this class
+        self.iter_vars = {
+            "values": "Objective Value",
+            "hesscond": "Hessian Condition Number",
+            "gradnorm": "Norm of Gradient"
+        }
 
     def solve_newton(self, x0, t=1., tol=.001, max_iter=500):
         """
@@ -325,21 +333,37 @@ class Optimization(object):
         self.iterates.append(array(x, copy=True))
         self.iter_values.append(self.objective.value(x))
         self.iter_gradnorm.append(norm(self.objective.gradient(x)))
+        self.iter_hesscond.append(self.objective.hessian_cn(x))
 
-    def plot_convergence(self):
+    @property
+    def values(self):
         """
-        Plot the norm of the gradient as a function of step number
-        :return: None
+        Return the objective values at each iteration
+        :return: numpy.ndarray
         """
-        values = array(self.iter_gradnorm)
-        scatter(
-            x=range(len(values)),
-            y=values
-        )
-        plt.title("Convergence Plot")
-        plt.xlabel("Iteration Number")
-        plt.ylabel("Norm of Gradient")
-        plt.show()
+        return array(self.iter_values)
+
+    @property
+    def hesscond(self):
+        """
+        Return the condition number of the hessian matrix at each iterate
+        """
+        return array(self.iter_hesscond)
+
+    @property
+    def gradnorm(self):
+        """
+        Return the L2 norm of the gradient at each iterate
+        """
+        return array(self.iter_gradnorm)
+
+    @property
+    def x0(self):
+        """
+        return the initial point
+        :return: numpy.ndarray
+        """
+        return self.iterates[0]
 
     @property
     def iterations(self):
@@ -363,26 +387,29 @@ class Optimization(object):
 
 
 class McPlotter(object):
-    def __init__(self, optimization, output_dir="plots"):
+    def __init__(self, optimization):
         """
         A class to plot the results of an optimization
         :param optimization: the optimization object
         """
         assert isinstance(optimization, Optimization)
-        self.output_dir = output_dir
-        self.optimization = optimization
+        self.opt = optimization
 
-    def summarize(self):
-
-        with cd(self.output_dir):
-            with cd("times_series_convergence"):
-                fn1 = "timeseries_" + self.optimization.parameter_string + ".png"
+    def summarize(self, run_name="optimization"):
+        a, b, c = self.opt.x0
+        params = {"a0": a,
+                  "b0": b,
+                  "c0": c}
+        with cd("times_series_convergence"):
+            with cd(run_name):
+                fn1 = "timeseries_" + stringify(**params) + ".png"
                 self.plot_time_series_convergence(file_name=fn1)
-            with cd("parameter_convergence"):
-                fn2 = ""
+        with cd("parameter_convergence"):
+            with cd(run_name):
+                fn2 = "param_cnvg_" + stringify(**params) + ".png"
                 self.plot_parameter_convergence(file_name=fn2)
 
-    def plot_time_series_convergence(self, file_name=None):
+    def plot_time_series_convergence(self, file_name=None, colorby=None):
         """
         Plot the observed time series along with the time series model
             at each step of the likelihood maximization
@@ -391,7 +418,7 @@ class McPlotter(object):
         """
         times = self.get_times()
         k = 1
-        for params, color in ColorPicker(self.optimization.iterates):
+        for params, color in ColorPicker(self.opt.iterates):
             temps = temperature(times, *params)
             TimeSeries.from_time_temp(times, temps).plot(
                 _type="line",
@@ -402,28 +429,47 @@ class McPlotter(object):
         self.plot_observed(layer=k)
         self.make_plot(file_name)
 
-    def plot_parameter_convergence(self, file_name=None):
+    def plot_parameter_convergence(self, file_name=None, colorby="hesscond"):
         """
         Plot the parameter estimates at each iterate
         :param file_name: str
+        :param colorby: the variable to map to colors
         :return: None
         """
-        points = self.optimization.as_array
+        points = self.opt.as_array
         n = nrow(points)
+        if colorby in self.opt.iter_vars.keys():
+            c = self.opt.__getattribute__(colorby)
+        else:
+            c = arange(n)
         scatter(
             points[:, 0],
             log(points[:, 2]),
-            c=arange(1, n+1),
-            cmap='gist_rainbow',
-            norm=colors.LogNorm(vmin=1, vmax=n),
+            c=c, cmap='viridis',
+            norm=colors.LogNorm(),
             edgecolors="black",
             alpha=1.0
         )
-        plt.colorbar(label="Time Step")
+        plt.colorbar(label=self.opt.iter_vars[colorby])
         plt.xlabel('a')
         plt.ylabel('log(c)')
         plt.title('Parameter Convergence')
         self.make_plot(file_name)
+
+    def plot_gradnorm_series(self):
+        """
+        Plot the norm of the gradient as a function of step number
+        :return: None
+        """
+        values = self.opt.gradnorm
+        scatter(
+            x=range(len(values)),
+            y=values
+        )
+        plt.title("Convergence Plot")
+        plt.xlabel("Iteration Number")
+        plt.ylabel("Norm of Gradient")
+        plt.show()
 
     @staticmethod
     def make_plot(file_name):
@@ -434,11 +480,11 @@ class McPlotter(object):
             plt.close()
 
     def get_times(self, n=100):
-        _start, _stop = self.optimization.objective.observed_data.range
+        _start, _stop = self.opt.objective.observed_data.range
         return linspace(_start, _stop, n)
 
     def plot_observed(self, layer=1):
-        self.optimization.objective.observed_data.plot(
+        self.opt.objective.observed_data.plot(
             add_labels=True, layer=layer
         )
 
@@ -466,15 +512,27 @@ class ColorPicker(object):
 
 
 if __name__ == "__main__":
+    x0 = [800, -200, .001]  # Initial guess for optimization
+
+    xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
     rs = 100  # random seed
     sigma = 6
-    barrier_t = 1000
     newton_t = 0.25
-    x0 = [800, -200, .001]  # Initial guess for optimization
-    xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
+    barrier_t = 1000
     sample_period = 20  # seconds
-    samples = 65
+    samples = 65  # number of samples in the observed time series
     seconds = sample_period * samples
+
+    # dictify for stringify
+    other_params = dict(
+        xt=xt,
+        rs=rs,
+        sg=sigma,
+        tn=newton_t,
+        tb=barrier_t,
+        sp=sample_period,
+        n=samples,
+    )
 
     s = Simulation(
         t_init=xt[0] + xt[1],
@@ -502,20 +560,6 @@ if __name__ == "__main__":
     opt.solve_newton(x0=x0, t=newton_t)
     opt.report_results()
     mcplot = McPlotter(opt)
-    mcplot.summarize()
+    mcplot.summarize(run_name=stringify(**other_params))
 
 
-def stringify(sort_keys=True, **kwargs):
-    """
-    Convert a namespace into a nice readable string
-    :param sort_keys
-    :param kwargs: arbitrary keyword arguments
-    :return: string representation of the names:values
-    """
-    return "_".join(
-        [
-            "{}{}".format(k, v)
-            for k, v
-            in kwargs.items()
-        ]
-    )
