@@ -293,7 +293,7 @@ class Optimization(object):
             "gradnorm": "Norm of Gradient"
         }
 
-    def solve_newton(self, x0, t=1., tol=.001, max_iter=500):
+    def solve_newton(self, x0, t=1., tol=.000001, max_iter=500):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -400,12 +400,11 @@ class McPlotter(object):
         params = {"a0": a,
                   "b0": b,
                   "c0": c}
-        with cd("times_series_convergence"):
-            with cd(run_name):
+        with cd(run_name):
+            with cd("times_series_convergence"):
                 fn1 = "timeseries_" + stringify(**params) + ".png"
                 self.plot_time_series_convergence(file_name=fn1)
-        with cd("parameter_convergence"):
-            with cd(run_name):
+            with cd("parameter_convergence"):
                 fn2 = "param_cnvg_" + stringify(**params) + ".png"
                 self.plot_parameter_convergence(file_name=fn2)
 
@@ -512,7 +511,7 @@ class ColorPicker(object):
 
 
 if __name__ == "__main__":
-    x0 = [800, -200, .001]  # Initial guess for optimization
+    x0 = [800, -200, .003]  # Initial guess for optimization
 
     xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
     rs = 100  # random seed
