@@ -130,7 +130,6 @@ class Objective(object):
             a=x[0],
             b=x[1],
             c=x[2],
-            t=self._t,
             sigma=self.sigma
         )
         return g
@@ -146,7 +145,6 @@ class Objective(object):
             a=x[0],
             b=x[1],
             c=x[2],
-            t=self._t,
             sigma=self.sigma
         )
         return h

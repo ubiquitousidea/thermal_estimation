@@ -67,7 +67,7 @@ def nloglik(time_series, a, b, c, sigma):
     return l
 
 
-def grad(time_series, a, b, c, t, sigma):
+def grad(time_series, a, b, c, sigma):
     """
     Compute the gradient of the negative log likelihood
     at some point (a,b,c,sigma)
@@ -75,11 +75,9 @@ def grad(time_series, a, b, c, t, sigma):
     :param a: temperature far away
     :param b: initial temperature difference
     :param c: rate constant
-    :param t: divisor for the log barrier on c
     :param sigma: noise parameter
     :return: gradient vector. numpy.ndarray
     """
-    n = time_series.n
     times  = time_series.times
     temps  = time_series.temperatures
     errors = temperature(times, a, b, c) - temps
@@ -92,23 +90,18 @@ def grad(time_series, a, b, c, t, sigma):
 
     g[0, 0] = sum(errors) / sig_sq
     g[1, 0] = sum(errors * u) / sig_sq
-    g[2, 0] = sum(errors * v) / sig_sq - (c * t) ** -1
-
-    # This extra term (c*t)**-1 in the partial derivative wrt c
-    # comes from the log barrier function to keep c positive.
-    # Note that I have failed to include this term in the 2nd derivatives below.
+    g[2, 0] = sum(errors * v) / sig_sq
 
     return g
 
 
-def hessian(time_series, a, b, c, t, sigma):
+def hessian(time_series, a, b, c, sigma):
     """
     A matrix of partial derivatives
     :param time_series: observed time series
     :param a: temperature far away
     :param b: initial temperature difference
     :param c: rate constant
-    :param t: divisor for the log barrier on c
     :param sigma: noise parameter
     :return: a matrix of partial derivatives
     """
@@ -271,6 +264,42 @@ class Simulation(object):
         """No setter for this one"""
         return self._noise_variance
 
+"""
+Brainstorm meta objects
+Need an object that can wrap the Optimization and repeat with varying random seeds
+Use this for a simulation in which multiple random noises are observed in order
+to quantify the relationship of signal noise to estimate noise
+Object will be called MonteCarlo
+"""
+
+
+class MonteCarlo(object):
+    """
+    A class to randomly generate observed time series
+    and compute an estimate of the parameters using Newton's method.
+    """
+    def __init__(self, runs=1000):
+        self.runs = runs
+
+    def simluate(self, a, b, c):
+        """
+        Randomly generate time series data using parameters a, b, c
+        Estimate the parameter values using newton's method
+        Increment random seed and repeat.
+        Return a list of optimal points for each random
+            seed in {0, ..., runs - 1}
+        :param a: True parameter 'a' in governing model
+        :param b: True parameter 'b' in governing model
+        :param c: True parameter 'c' in governing model
+        :return: list of estimates of (a,b,c)
+        """
+        estimates = []
+        for randomseed in range(self.runs):
+            pass
+
+        return estimates
+
+
 
 class Optimization(object):
     def __init__(self, objective):
@@ -293,7 +322,7 @@ class Optimization(object):
             "gradnorm": "Norm of Gradient"
         }
 
-    def solve_newton(self, x0, t=1., tol=.000001, max_iter=500):
+    def solve_newton(self, x0, t=1., tol=.0001, max_iter=500):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
