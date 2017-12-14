@@ -1,8 +1,12 @@
 import os
 import json
 from matplotlib import pyplot as plt
-from matplotlib.pyplot import scatter
-from numpy import array, concatenate, ndarray, zeros, nan
+from matplotlib.pyplot import scatter, contour
+from numpy import (
+    array, concatenate, ndarray,
+    zeros, nan, meshgrid,
+    linspace, log, logspace, zeros_like
+)
 from numpy.linalg import svd
 from numpy.linalg.linalg import LinAlgError
 from numpy.random.mtrand import randn as noise
@@ -166,13 +170,30 @@ class Objective(object):
         else:
             return nan
 
-    def contour_plot(self, plot=False, fname=None):
+    def contour_plot(self, b):
         """
         Produce a contour plot of the objective function on the current figure
-        :param plot: If true, call pyplot.show()
-        :param fname: If name, write a png image of the contour plot
+        :param b: the fixed value to be used for parameter b
         """
-        # TODO: Add the contour plot functionality to the objective class
+        fig = plt.gcf()
+        try:
+            ax = fig.get_axes()[0]
+        except IndexError:
+            ax = plt.axes()
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        xx, yy = meshgrid(linspace(xlim[0], xlim[1], 200),
+                          logspace(ylim[0], ylim[1], 200))
+        zz = zeros_like(xx)
+        _m, _n = zz.shape
+        data = []
+        for _x, _y in zip(xx.ravel(), yy.ravel()):
+            data.append(self._objective(
+                time_series=self.observed_data,
+                a=_x, b=b, c=_y, sigma=self.sigma
+            ))
+        zz = array(data).reshape(_m, _n)
+        contour(xx, yy, zz)
 
     @property
     def observed_data(self):

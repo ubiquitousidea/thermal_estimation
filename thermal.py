@@ -2,18 +2,19 @@ import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import get_cmap, Normalize
 from matplotlib.pyplot import scatter, contour
+from mpl_toolkits.mplot3d import Axes3D
+
 from numpy import float128 as datatype
 from numpy import (
-    linspace, array,
-    exp, log, sum, pi,
-    matrix, zeros, arange,
-    mean, std, meshgrid,
-    floor, argwhere,
-    abs, max, min, eye
+    linspace, array, exp, log, sum, pi,
+    matrix, zeros, zeros_like,
+    arange, median, std, meshgrid,
+    floor, argwhere, abs, max
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
 from numpy.random import seed as set_random_seed
+from scipy.stats.mstats import winsorize
 
 from util import (
     add_noise, Objective,
@@ -131,14 +132,14 @@ def hessian(time_series, a, b, c, sigma):
     return h
 
 
-class Simulation(object):
+class DataSimulation(object):
     def __init__(self, t_init, t_hot, rate_const, sigma=0.):
         """
         Use this to produce a simulated time series of temperature data.
 
         Example:
-        >>> s = Simulation(33, 475, .05, 3)
-        >>> ts = s.simulate(2, 65)
+        >>> s = DataSimulation(33, 475, .05, 3)
+        >>> ts = s.get_time_series(2, 65)
 
         :param [degrees F] t_init: Initial temperature
         :param [degrees F] t_hot: Far away temperature (asymptotic temperature)
@@ -175,7 +176,7 @@ class Simulation(object):
         )
         return _times
 
-    def simulate(self, t_total, n_pt, random_seed=None):
+    def get_time_series(self, t_total, n_pt, random_seed=None):
         """
         Simulate the heating by convection
         Add random noise as given by sigma attribute of this class instance.
@@ -197,7 +198,7 @@ class Simulation(object):
         return TimeSeries.from_time_temp(times, temps)
 
     def plot_time_series(self, t_total=None,
-                         n_pt=None, random_seed=123,
+                         n_pt=None, random_seed=None,
                          time_series=None):
         """
         Plot a time series of temperatures
@@ -209,7 +210,7 @@ class Simulation(object):
         :return: None
         """
         if time_series is None:
-            time_series = self.simulate(
+            time_series = self.get_time_series(
                 t_total=t_total, n_pt=n_pt,
                 random_seed=random_seed
             )
@@ -355,7 +356,7 @@ class MonteCarlo(object):
         """
         Estimate the parameters from current time series
         """
-        self.opt.solve_newton(t=0.4)
+        self.opt.solve_newton(t=0.25)
         return self.opt.optimal_point
 
     def clear_iterations(self):
@@ -387,12 +388,12 @@ class MonteCarlo(object):
         if tf is None:
             tf = self.tf
 
-        ts = Simulation(
+        ts = DataSimulation(
             t_init=a + b,
             t_hot=a,
             rate_const=c,
             sigma=sigma
-        ).simulate(
+        ).get_time_series(
             t_total=tf,
             n_pt=n,
             random_seed=rs
@@ -598,7 +599,8 @@ class McPlotter(object):
             c = self.opt.__getattribute__(colorby)
         else:
             c = arange(n)
-        self.opt.objective.contour_plot()
+        x0 = self.opt.iterates[0]
+        xn = self.opt.optimal_point
         scatter(
             points[:, 0],
             log(points[:, 2]),
@@ -607,6 +609,7 @@ class McPlotter(object):
             edgecolors="black",
             alpha=1.0
         )
+        self.opt.objective.contour_plot(b=self.opt.optimal_point[1])
         plt.colorbar(label=self.opt.iter_vars[colorby])
         plt.xlabel('a')
         plt.ylabel('log(c)')
@@ -668,34 +671,128 @@ class ColorPicker(object):
             yield item, color
 
 
+def demonstrate_convergence(xt, sigma):
+    """
+    Demonstrate the convergence of Newton's Method
+    :return:
+    """
+    ts = DataSimulation(
+        t_init=xt[0] + xt[1],
+        t_hot=xt[0],
+        rate_const=xt[2],
+        sigma=sigma
+    ).get_time_series(
+        t_total=1300,
+        n_pt=65,
+        random_seed=111
+    )
+    obj = Objective(
+        func=nloglik,
+        grad_f=grad,
+        hess_f=hessian,
+        observed_data=ts,
+        sigma=sigma
+    )
+    opt = Optimization(
+        objective=obj
+    )
+    opt.solve_newton(x0=[800, -200, .001], t=0.25)
+    opt.report_results()
+    mcplot = McPlotter(opt)
+    mcplot.plot_parameter_convergence("fig1_param_converged.png")
+    mcplot.plot_time_series_convergence("fig2_timeseries_converged.png")
+
+
+def plot_bar3d(x, y, z, xlab=None, ylab=None, title=None,
+               fname=None):
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111, projection="3d")
+    assert isinstance(ax, Axes3D)
+    x = x.ravel()
+    y = y.ravel()
+    height = z.ravel()
+    base = zeros_like(height)
+    ax.bar3d(x, y, base, 1, 1, height, shade=True)
+    plt.xlabel(xlab)
+    plt.ylabel(ylab)
+    plt.title(title)
+    # plt.colorbar(label=title)
+    if fname is not None:
+        plt.savefig(fname)
+        plt.close()
+    else:
+        plt.show()
+
+
+def plot_contour(x, y, z,
+                 xlab=None, ylab=None,
+                 title=None, fname=None):
+    contour(x, y, z)
+    plt.xlabel(xlab)
+    plt.ylabel(ylab)
+    plt.title(title)
+    plt.colorbar(label=title)
+    plt.savefig(fname)
+    plt.close()
+
 if __name__ == "__main__":
-    xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
-    sigma = 5
-    m, n = 8, 8
-    # tf = 1400  # largest time recorded
-    tf_range = linspace(800, 1600, m)
-    samples_range = floor(linspace(30, 70, n))
+
+    xt = [500, -400, .003]  # theoretical parameters (used in the simulation)
+    sigma = 6
+    demonstrate_convergence(xt, sigma)
+
+    m, n = 3, 3
+    tf_range = linspace(800, 1200, m)
+    samples_range = floor(linspace(50, 70, n))
     biases = zeros(shape=(m, n, 3))
     stderr = zeros(shape=(m, n, 3))
-    mc = MonteCarlo(runs=40)
+    mc = MonteCarlo(runs=200)
     for i, tf in enumerate(tf_range):
         for j, samples in enumerate(samples_range):
             estimates = mc.simluate(
                 a=xt[0], b=xt[1], c=xt[2],
                 sigma=sigma, n=samples, tf=tf
             )
-            biases[i, j, :] = mean(estimates, axis=0) - xt
+            biases[i, j, :] = median(estimates, axis=0) - xt
             stderr[i, j, :] = std(estimates, axis=0)
 
     to_json(biases, "biases.json")
     to_json(stderr, "stderr.json")
+    xlab="Total Time of Observation"
+    ylab="Total Number of Measurements"
     xx, yy = meshgrid(tf_range, samples_range, indexing="ij")
-    contour(xx, yy, stderr[:, :, 2])
-    # scatter(xx, yy, c=stderr[:, :, 2])
-    plt.xlabel("Total Time of Observation")
-    plt.ylabel("Total Number of Measurements")
-    plt.title("Contour Plot: Std Error (a)")
-    plt.colorbar(label="Std Err (c)")
-    plt.savefig("stderr_c.png")
+    plot_contour(
+        xx, yy, stderr[:, :, 2],
+        xlab=xlab,
+        ylab=ylab,
+        title="Std Err (c)",
+        fname="fig3_stderr_c.png")
+    plot_contour(
+        xx, yy, stderr[:, :, 1],
+        xlab=xlab,
+        ylab=ylab,
+        title="Std Err (b)",
+        fname="fig4_stderr_b.png")
+    plot_contour(
+        xx, yy, stderr[:, :, 0],
+        xlab=xlab,
+        ylab=ylab,
+        title="Std Err (a)",
+        fname="fig5_stderr_a.png")
+    plot_contour(
+        xx, yy, biases[:, :, 0],
+        xlab=xlab, ylab=ylab,
+        title="Bias in Estimate of A",
+        fname="fig6_bias_a.png")
+    plot_contour(
+        xx, yy, biases[:, :, 1],
+        xlab=xlab, ylab=ylab,
+        title="Bias in Estimate of B",
+        fname="fig6_bias_b.png")
+    plot_contour(
+        xx, yy, biases[:, :, 2],
+        xlab=xlab, ylab=ylab,
+        title="Bias in Estimate of C",
+        fname="fig6_bias_c.png")
 
 
