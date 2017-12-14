@@ -1,8 +1,9 @@
 import os
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import scatter
-from numpy import array, concatenate, ndarray, inf, zeros, nan
+from numpy import array, concatenate, ndarray, zeros, nan
 from numpy.linalg import svd
+from numpy.linalg.linalg import LinAlgError
 from numpy.random.mtrand import randn as noise
 from contextlib import contextmanager
 
@@ -80,8 +81,8 @@ def cd(new_directory=None):
 
 
 class Objective(object):
-    def __init__(self, func, grad_f, hess_f, observed_data,
-                 sigma, barrier_t=inf):
+    def __init__(self, func, grad_f, hess_f,
+                 observed_data, sigma):
 
         """
         A class to represent the objective function
@@ -98,7 +99,6 @@ class Objective(object):
         self._objective = func
         self._grad = grad_f
         self._hess = hess_f
-        self._t = barrier_t
         self._observed_data = None
         self._sigma = None
         self.observed_data = observed_data
@@ -155,12 +155,23 @@ class Objective(object):
         :return: float (NaN if hessian is not invertible)
         """
         h = self.hessian(x)
-        u, s, vt = svd(h)
+        try:
+            u, s, vt = svd(h)
+        except LinAlgError:
+            return nan
         s = relu(s)
         if s.min() > 0:
             return s.max() / s.min()
         else:
             return nan
+
+    def contour_plot(self, plot=False, fname=None):
+        """
+        Produce a contour plot of the objective function on the current figure
+        :param plot: If true, call pyplot.show()
+        :param fname: If name, write a png image of the contour plot
+        """
+        # TODO: Add the contour plot functionality to the objective class
 
     @property
     def observed_data(self):
@@ -168,8 +179,15 @@ class Objective(object):
 
     @observed_data.setter
     def observed_data(self, value):
-        assert isinstance(value, TimeSeries)
-        self._observed_data = value
+        if value is None:
+            self._observed_data = None
+        elif isinstance(value, TimeSeries):
+            self._observed_data = value
+        else:
+            raise TypeError(
+                "time series value must be either "
+                "TimeSeries instance or None"
+            )
 
     @property
     def sigma(self):
@@ -187,7 +205,9 @@ class TimeSeries(object):
         """
         self._array = None
 
-    def plot(self, add_labels=False, _type="scatter", color=None, layer=1, edgecolor='black'):
+    def plot(self, add_labels=False,
+             _type="scatter", color=None,
+             layer=1, edgecolor='black'):
         """
         Plot the time series
         :param add_labels: If True, axis labels and a title will be added.

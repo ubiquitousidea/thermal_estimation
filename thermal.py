@@ -1,12 +1,13 @@
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import get_cmap, Normalize
-from matplotlib.pyplot import scatter
-from numpy import float128 as dt
+from matplotlib.pyplot import scatter, contour
+from numpy import float128 as datatype
 from numpy import (
     linspace, array,
     exp, log, sum, pi,
-    matrix, zeros, arange
+    matrix, zeros, arange,
+    mean, std, meshgrid
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -167,11 +168,11 @@ class Simulation(object):
             start=0,
             stop=t_total,
             num=n_pt,
-            dtype=dt
+            dtype=datatype
         )
         return _times
 
-    def simulate(self, t_total, n_pt, random_seed=123):
+    def simulate(self, t_total, n_pt, random_seed=None):
         """
         Simulate the heating by convection
         :param t_total: total elapse time
@@ -186,7 +187,8 @@ class Simulation(object):
             b=(self.t_init - self.t_hot),
             c=self.rate_const
         )
-        set_random_seed(random_seed)
+        if random_seed is not None:
+            set_random_seed(random_seed)
         add_noise(temps, self.sigma)
         return TimeSeries.from_time_temp(times, temps)
 
@@ -279,9 +281,29 @@ class MonteCarlo(object):
     and compute an estimate of the parameters using Newton's method.
     """
     def __init__(self, runs=1000):
+        """
+        Initialize a Monte Carlo with a specified number of runs to perform
+        Run using the simulate method
+        :param runs: integer; how many random iterations to perform.
+        """
+        self.estimates = []
+        self.true_a = None
+        self.true_b = None
+        self.true_c = None
+        self.sigma = None
+        self.n = None
+        self.dt = None
+        self.objective = Objective(
+            func=nloglik,
+            grad_f=grad,
+            hess_f=hessian,
+            observed_data=None,
+            sigma=1.0
+        )
+        self.opt = Optimization(self.objective)
         self.runs = runs
 
-    def simluate(self, a, b, c):
+    def simluate(self, a, b, c, sigma, n, dt):
         """
         Randomly generate time series data using parameters a, b, c
         Estimate the parameter values using newton's method
@@ -291,14 +313,70 @@ class MonteCarlo(object):
         :param a: True parameter 'a' in governing model
         :param b: True parameter 'b' in governing model
         :param c: True parameter 'c' in governing model
+        :param sigma: noise parameter (sd of Gaussian noise)
         :return: list of estimates of (a,b,c)
         """
-        estimates = []
+        self.true_a = a
+        self.true_b = b
+        self.true_c = c
+        self.n = n
+        self.dt = dt
+        self.sigma = sigma
+        self.objective.sigma = sigma
+        self.estimates = []
         for randomseed in range(self.runs):
-            pass
+            self.clear_iterations()
+            self.set_time_series(rs=randomseed)
+            self.estimates.append(self.estimate())
+        return array(self.estimates)
 
-        return estimates
+    def estimate(self):
+        """
+        Estimate the parameters from current time series
+        """
+        self.opt.solve_newton(x0=(800, -200, .0001), t=.25)
+        return self.opt.optimal_point
 
+    def clear_iterations(self):
+        """
+        Clear any previous iterations present in the optimization object
+        :return:
+        """
+        self.opt.clear_iterations()
+
+    def set_time_series(self,
+                        a=None, b=None,
+                        c=None, sigma=None,
+                        n=None, dt=None,
+                        rs=None):
+        """
+        Simluate a time series of data using the Simulation class
+        Store in the objective
+        """
+        if a is None:
+            a = self.true_a
+        if b is None:
+            b = self.true_b
+        if c is None:
+            c = self.true_c
+        if sigma is None:
+            sigma = self.objective.sigma
+        if n is None:
+            n = self.n
+        if dt is None:
+            dt = self.dt
+
+        ts = Simulation(
+            t_init=a + b,
+            t_hot=a,
+            rate_const=c,
+            sigma=sigma
+        ).simulate(
+            t_total=n * dt,
+            n_pt=n,
+            random_seed=rs
+        )
+        self.objective.observed_data = ts
 
 
 class Optimization(object):
@@ -336,7 +414,7 @@ class Optimization(object):
             to the time dependent model
         """
         grad_norm = norm(self.objective.gradient(x0))
-        x = array(x0, copy=True, dtype=dt)
+        x = array(x0, copy=True, dtype=datatype)
         self.store_iteration(x)
         k = 0
         while grad_norm > tol:
@@ -352,6 +430,18 @@ class Optimization(object):
                 break
         self.optimal_point = x
         self.optimal_value = self.objective.value(x)
+
+    def clear_iterations(self):
+        """
+        Clear the stored iterations
+        :return: NoneType
+        """
+        self.iterates = []
+        self.iter_values = []
+        self.iter_gradnorm = []
+        self.iter_hesscond = []
+        self.optimal_point = None
+        self.optimal_value = None
 
     def store_iteration(self, x):
         """
@@ -470,6 +560,7 @@ class McPlotter(object):
             c = self.opt.__getattribute__(colorby)
         else:
             c = arange(n)
+        self.opt.objective.contour_plot()
         scatter(
             points[:, 0],
             log(points[:, 2]),
@@ -540,54 +631,26 @@ class ColorPicker(object):
 
 
 if __name__ == "__main__":
-    x0 = [800, -200, .003]  # Initial guess for optimization
-
     xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
-    rs = 100  # random seed
-    sigma = 6
-    newton_t = 0.25
-    barrier_t = 1000
-    sample_period = 20  # seconds
-    samples = 65  # number of samples in the observed time series
-    seconds = sample_period * samples
+    m, n = 5, 5
+    sample_period = 20
+    sigma_range = linspace(1, 9, m)
+    samples_range = linspace(30, 70, n)
+    biases = zeros(shape=(m, n, 3))
+    stderr = zeros(shape=(m, n, 3))
+    mc = MonteCarlo(10)
+    for i, sigma in enumerate(sigma_range):
+        for j, samples in enumerate(samples_range):
+            estimates = mc.simluate(
+                a=xt[0], b=xt[1], c=xt[2],
+                sigma=sigma, n=samples, dt=sample_period
+            )
+            biases[i, j, :] = mean(estimates, axis=0)
+            stderr[i, j, :] = std(estimates, axis=0)
+    xx, yy = meshgrid(sigma_range, samples_range)
+    contour(xx, yy, stderr[:, :, 2])
+    plt.show()
 
-    # dictify for stringify
-    other_params = dict(
-        xt=xt,
-        rs=rs,
-        sg=sigma,
-        tn=newton_t,
-        tb=barrier_t,
-        sp=sample_period,
-        n=samples,
-    )
 
-    s = Simulation(
-        t_init=xt[0] + xt[1],
-        t_hot=xt[0],
-        rate_const=xt[2],
-        sigma=sigma
-    )
-
-    time_series = s.simulate(
-        t_total=seconds,
-        n_pt=samples,
-        random_seed=rs
-    )
-
-    objective = Objective(
-        func=nloglik,
-        grad_f=grad,
-        hess_f=hessian,
-        observed_data=time_series,
-        sigma=sigma,
-        barrier_t=barrier_t
-    )
-
-    opt = Optimization(objective)
-    opt.solve_newton(x0=x0, t=newton_t)
-    opt.report_results()
-    mcplot = McPlotter(opt)
-    mcplot.summarize(run_name=stringify(**other_params))
 
 
