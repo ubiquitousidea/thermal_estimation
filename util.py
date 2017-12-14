@@ -319,7 +319,7 @@ def to_json(arr_like, fname):
     """
     arr = array(arr_like).tolist()
     with open(fname, 'w')as fh:
-        fh.write(json.dumps(arr))
+        fh.write(json.dumps(arr, indent=4))
 
 
 def from_json(fname):

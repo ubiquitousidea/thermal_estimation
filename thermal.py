@@ -8,7 +8,8 @@ from numpy import (
     exp, log, sum, pi,
     matrix, zeros, arange,
     mean, std, meshgrid,
-    floor
+    floor, argwhere,
+    abs, max, min, eye
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -330,7 +331,7 @@ class MonteCarlo(object):
         self.objective.sigma = sigma
         self.estimates = []
         for randomseed in range(self.runs):
-            print("Random Seed: {}".format(randomseed))
+            print("Time Series generated with Random Seed: {}".format(randomseed))
             self.clear_iterations()
             self.set_time_series(rs=randomseed)
             self.estimates.append(self.estimate())
@@ -354,7 +355,7 @@ class MonteCarlo(object):
         """
         Estimate the parameters from current time series
         """
-        self.opt.solve_newton(x0=(800, -200, .0001), t=.25)
+        self.opt.solve_newton(t=0.4)
         return self.opt.optimal_point
 
     def clear_iterations(self):
@@ -420,7 +421,7 @@ class Optimization(object):
             "gradnorm": "Norm of Gradient"
         }
 
-    def solve_newton(self, x0, t=1., tol=.0001, max_iter=500):
+    def solve_newton(self, x0=None, t=1., tol=.0001, max_iter=500):
         """
         Estimate the parameters of the time dependent model given
             some observed time series. It is assumed that the first
@@ -433,6 +434,8 @@ class Optimization(object):
         :return: Estimates of the parameters that would be input
             to the time dependent model
         """
+        if x0 is None:
+            x0 = self.initial_guess()
         grad_norm = norm(self.objective.gradient(x0))
         x = array(x0, copy=True, dtype=datatype)
         self.store_iteration(x)
@@ -450,6 +453,21 @@ class Optimization(object):
                 break
         self.optimal_point = x
         self.optimal_value = self.objective.value(x)
+
+    def initial_guess(self):
+        """
+        Make an educated guess at the parameters given the time series
+        :return: numpy array, shape=(3,)
+        """
+        temps = self.objective.observed_data.temperatures
+        times = self.objective.observed_data.times
+        a0 = temps[-1]
+        d = temps - a0
+        b0 = d[0]
+        i_half = max(argwhere(abs(d) > 0.5 * max(abs(d))))
+        t_half = times[i_half]  # half life
+        c0 = log(2) / t_half  # rate constant from half life
+        return a0, b0, c0
 
     def clear_iterations(self):
         """
@@ -652,30 +670,31 @@ class ColorPicker(object):
 
 if __name__ == "__main__":
     xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
+    sigma = 5
     m, n = 8, 8
-    tf = 1400  # largest time recorded
-    sigma_range = linspace(1, 8, m)
+    # tf = 1400  # largest time recorded
+    tf_range = linspace(800, 1600, m)
     samples_range = floor(linspace(30, 70, n))
     biases = zeros(shape=(m, n, 3))
     stderr = zeros(shape=(m, n, 3))
     mc = MonteCarlo(runs=40)
-    for i, sigma in enumerate(sigma_range):
+    for i, tf in enumerate(tf_range):
         for j, samples in enumerate(samples_range):
             estimates = mc.simluate(
                 a=xt[0], b=xt[1], c=xt[2],
                 sigma=sigma, n=samples, tf=tf
             )
-            biases[i, j, :] = mean(estimates, axis=0)
+            biases[i, j, :] = mean(estimates, axis=0) - xt
             stderr[i, j, :] = std(estimates, axis=0)
 
-    to_json(biases, "biases.csv")
-    to_json(stderr, "stderr.csv")
-    xx, yy = meshgrid(sigma_range, samples_range, indexing="ij")
-    # contour(xx, yy, stderr[:, :, 2])
-    scatter(xx, yy, c=stderr[:, :, 2])
-    plt.xlabel("Sigma: Noise parameter")
-    plt.ylabel("Total Number of Samples (Fixed Time)")
-    plt.title("Contour Plot: Std Error (c)")
+    to_json(biases, "biases.json")
+    to_json(stderr, "stderr.json")
+    xx, yy = meshgrid(tf_range, samples_range, indexing="ij")
+    contour(xx, yy, stderr[:, :, 2])
+    # scatter(xx, yy, c=stderr[:, :, 2])
+    plt.xlabel("Total Time of Observation")
+    plt.ylabel("Total Number of Measurements")
+    plt.title("Contour Plot: Std Error (a)")
     plt.colorbar(label="Std Err (c)")
     plt.savefig("stderr_c.png")
 
