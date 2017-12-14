@@ -7,7 +7,8 @@ from numpy import (
     linspace, array,
     exp, log, sum, pi,
     matrix, zeros, arange,
-    mean, std, meshgrid
+    mean, std, meshgrid,
+    floor
 )
 from numpy.linalg import inv as inverse
 from numpy.linalg import norm
@@ -16,7 +17,8 @@ from numpy.random import seed as set_random_seed
 from util import (
     add_noise, Objective,
     TimeSeries, nrow, cd,
-    stringify)
+    stringify, to_json, from_json
+)
 
 """
 Want to estimate the parameters of a heating model given a
@@ -175,6 +177,7 @@ class Simulation(object):
     def simulate(self, t_total, n_pt, random_seed=None):
         """
         Simulate the heating by convection
+        Add random noise as given by sigma attribute of this class instance.
         :param t_total: total elapse time
         :param n_pt: number of time points, including the zero-time.
         :param random_seed: random seed (integer)
@@ -291,8 +294,8 @@ class MonteCarlo(object):
         self.true_b = None
         self.true_c = None
         self.sigma = None
-        self.n = None
-        self.dt = None
+        self._n = None
+        self.tf = None
         self.objective = Objective(
             func=nloglik,
             grad_f=grad,
@@ -303,7 +306,7 @@ class MonteCarlo(object):
         self.opt = Optimization(self.objective)
         self.runs = runs
 
-    def simluate(self, a, b, c, sigma, n, dt):
+    def simluate(self, a, b, c, sigma, n, tf):
         """
         Randomly generate time series data using parameters a, b, c
         Estimate the parameter values using newton's method
@@ -314,21 +317,38 @@ class MonteCarlo(object):
         :param b: True parameter 'b' in governing model
         :param c: True parameter 'c' in governing model
         :param sigma: noise parameter (sd of Gaussian noise)
+        :param n: number of samples in the time series
+        :param tf: largest time observed (t final) in the time series
         :return: list of estimates of (a,b,c)
         """
         self.true_a = a
         self.true_b = b
         self.true_c = c
         self.n = n
-        self.dt = dt
+        self.tf = tf
         self.sigma = sigma
         self.objective.sigma = sigma
         self.estimates = []
         for randomseed in range(self.runs):
+            print("Random Seed: {}".format(randomseed))
             self.clear_iterations()
             self.set_time_series(rs=randomseed)
             self.estimates.append(self.estimate())
         return array(self.estimates)
+
+    @property
+    def n(self):
+        """Return the number of time series sample for this Monte Carlo"""
+        return self._n
+
+    @n.setter
+    def n(self, value):
+        """
+        Set the number of time series samples ensuring it is an integer
+        """
+        if value != int(value):
+            raise RuntimeWarning("Rounding n {} to an integer".format(value))
+        self._n = int(value)
 
     def estimate(self):
         """
@@ -347,7 +367,7 @@ class MonteCarlo(object):
     def set_time_series(self,
                         a=None, b=None,
                         c=None, sigma=None,
-                        n=None, dt=None,
+                        n=None, tf=None,
                         rs=None):
         """
         Simluate a time series of data using the Simulation class
@@ -363,8 +383,8 @@ class MonteCarlo(object):
             sigma = self.objective.sigma
         if n is None:
             n = self.n
-        if dt is None:
-            dt = self.dt
+        if tf is None:
+            tf = self.tf
 
         ts = Simulation(
             t_init=a + b,
@@ -372,7 +392,7 @@ class MonteCarlo(object):
             rate_const=c,
             sigma=sigma
         ).simulate(
-            t_total=n * dt,
+            t_total=tf,
             n_pt=n,
             random_seed=rs
         )
@@ -632,25 +652,31 @@ class ColorPicker(object):
 
 if __name__ == "__main__":
     xt = [500, -400, .004]  # theoretical parameters (used in the simulation)
-    m, n = 5, 5
-    sample_period = 20
-    sigma_range = linspace(1, 9, m)
-    samples_range = linspace(30, 70, n)
+    m, n = 8, 8
+    tf = 1400  # largest time recorded
+    sigma_range = linspace(1, 8, m)
+    samples_range = floor(linspace(30, 70, n))
     biases = zeros(shape=(m, n, 3))
     stderr = zeros(shape=(m, n, 3))
-    mc = MonteCarlo(10)
+    mc = MonteCarlo(runs=40)
     for i, sigma in enumerate(sigma_range):
         for j, samples in enumerate(samples_range):
             estimates = mc.simluate(
                 a=xt[0], b=xt[1], c=xt[2],
-                sigma=sigma, n=samples, dt=sample_period
+                sigma=sigma, n=samples, tf=tf
             )
             biases[i, j, :] = mean(estimates, axis=0)
             stderr[i, j, :] = std(estimates, axis=0)
-    xx, yy = meshgrid(sigma_range, samples_range)
-    contour(xx, yy, stderr[:, :, 2])
-    plt.show()
 
-
+    to_json(biases, "biases.csv")
+    to_json(stderr, "stderr.csv")
+    xx, yy = meshgrid(sigma_range, samples_range, indexing="ij")
+    # contour(xx, yy, stderr[:, :, 2])
+    scatter(xx, yy, c=stderr[:, :, 2])
+    plt.xlabel("Sigma: Noise parameter")
+    plt.ylabel("Total Number of Samples (Fixed Time)")
+    plt.title("Contour Plot: Std Error (c)")
+    plt.colorbar(label="Std Err (c)")
+    plt.savefig("stderr_c.png")
 
 

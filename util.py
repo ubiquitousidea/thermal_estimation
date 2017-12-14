@@ -1,4 +1,5 @@
 import os
+import json
 from matplotlib import pyplot as plt
 from matplotlib.pyplot import scatter
 from numpy import array, concatenate, ndarray, zeros, nan
@@ -308,3 +309,25 @@ def relu(arr):
     :return: numpy.ndarray with all non-negative entries
     """
     return column_bind(zeros(len(arr)), arr).max(axis=1)
+
+
+def to_json(arr_like, fname):
+    """
+    Write out the contents of the arraylike object to the file fname
+    :param arr_like: array like object
+    :param fname: file name
+    """
+    arr = array(arr_like).tolist()
+    with open(fname, 'w')as fh:
+        fh.write(json.dumps(arr))
+
+
+def from_json(fname):
+    """
+    read a json file and return a dict
+    :param fname: file name
+    :return: dict
+    """
+    with open(fname, 'r') as fh:
+        d = json.load(fh)
+    return d
